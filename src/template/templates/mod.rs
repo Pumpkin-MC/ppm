@@ -7,10 +7,13 @@
 
 pub mod c;
 pub mod csharp;
+pub mod d;
 pub mod go;
+pub mod kotlin;
 pub mod python;
 pub mod rust;
 pub mod typescript;
+pub mod zig;
 
 #[derive(Debug, Clone)]
 pub struct TemplateContext {

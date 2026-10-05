@@ -6,23 +6,26 @@
 
 **`ppm`** is the official package and plugin manager for the [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin) Minecraft server ecosystem.
 
-It allows server administrators and developers to effortlessly browse, search, and download WebAssembly (`.wasm`) plugins from the [Pumpkin Marketplace](https://market.pumpkinmc.org), manage installed plugins on their servers, and scaffold new plugin projects in multiple programming languages with an interactive TUI wizard.
+It allows server administrators and developers to effortlessly search and download WebAssembly (`.wasm`) plugins from the [Pumpkin Marketplace](https://market.pumpkinmc.org), manage installed plugins directly inside server roots or `plugins/` folders, and scaffold new plugin projects across all supported languages with an interactive TUI wizard.
 
 ---
 
 ## 🌟 Key Features
 
-- 🔍 **Marketplace Search & Discovery**: Search, browse, and inspect plugin details directly from `market.pumpkinmc.org`.
-- 📥 **One-Command Installation**: Download signed `.wasm` plugin binaries directly into your server's `plugins/` folder with live progress indicators.
+- 🔍 **Marketplace Search & Discovery**: Search and inspect plugin details directly from `market.pumpkinmc.org`.
+- 📥 **Context-Aware Installation**: Automatically detects if executed inside Pumpkin server root (`./plugins`) or inside the `plugins/` folder directly (`.`), or allows custom paths.
 - 📦 **Local Plugin Management**: List active/deactivated plugins, check file sizes, and safely remove plugins.
 - 🔄 **Plugin Updates**: Check for updates and automatically upgrade installed plugins to the latest release.
-- 🚀 **Interactive Plugin Template Generator**: Rapidly bootstrap new Pumpkin plugins with a friendly TUI wizard supporting:
-  - 🦀 **Rust** (official `pumpkin-plugin-api`)
-  - 🟨 **TypeScript / JavaScript** (`@pumpkinmc/pumpkin-api-ts`)
+- 🚀 **Multi-Language Plugin Scaffolding**: Rapidly bootstrap new Pumpkin plugins with a friendly TUI wizard supporting:
+  - 🦀 **Rust** (`pumpkin-plugin-api`)
   - 🐍 **Python** (`pumpkin-api`)
-  - 🐹 **Go** (`github.com/Pumpkin-MC/pumpkin-api-go`)
   - 🟣 **C# (.NET 10+)** (`PumpkinMC.PumpkinApi`)
-  - 🇨 **C** (`pumpkin-api-c`)
+  - 🇨 **C** (`pumpkin_api.h`)
+  - 🐹 **Go** (`github.com/Pumpkin-MC/pumpkin-api-go`)
+  - 🟣 **Kotlin** (wasmWasi Multiplatform)
+  - 🔷 **D** (dlang with LDC `wasm32-wasi`)
+  - ⚡ **Zig** (native `wasm32-wasi` target)
+  - 🟨 **TypeScript / JavaScript** (`@pumpkinmc/pumpkin-api-ts`)
 
 ---
 
@@ -51,7 +54,7 @@ cargo build --release
 
 ### 1. Searching the Marketplace
 
-Search plugins by keyword, name, or developer:
+Search plugins by keyword, name, or author:
 
 ```bash
 # General search
@@ -67,16 +70,7 @@ ppm search --type free
 ppm search AppleSkin --json
 ```
 
-### 2. Browsing Recent & Popular Plugins
-
-List plugins from the marketplace with pagination:
-
-```bash
-ppm list --limit 10
-ppm list --category "Admin Tools"
-```
-
-### 3. Inspecting Plugin Details
+### 2. Inspecting Plugin Details
 
 View metadata, versions, author, and description:
 
@@ -86,12 +80,15 @@ ppm info AppleSkinPumpkin
 ppm info z0UPVzl8
 ```
 
-### 4. Installing Plugins
+### 3. Installing Plugins
 
-Download and install a plugin directly into your Pumpkin server:
+Download and install a plugin directly:
 
 ```bash
-# Install to default directory (./plugins)
+# Executed in Pumpkin server root -> installs to ./plugins/
+ppm install AppleSkinPumpkin
+
+# Executed directly inside the plugins folder -> installs to ./
 ppm install AppleSkinPumpkin
 
 # Install to custom plugins directory
@@ -107,13 +104,13 @@ ppm install AppleSkinPumpkin --force
 ppm install PaidPlugin --token <YOUR_TOKEN>
 ```
 
-### 5. Managing Installed Plugins
+### 4. Managing Installed Plugins
 
 List all WebAssembly plugins currently in your plugins directory:
 
 ```bash
 ppm installed
-# or using aliases:
+# or using alias:
 ppm ls
 ```
 
@@ -138,7 +135,7 @@ ppm update AppleSkinPumpkin
 ppm update
 ```
 
-### 6. Creating New Plugins (`ppm new`)
+### 5. Creating New Plugins (`ppm new`)
 
 Launch the interactive TUI wizard to scaffold a new plugin:
 
@@ -150,7 +147,7 @@ The wizard prompts for:
 1. **Plugin Name**
 2. **Author Name** (auto-detected from `git config` when available)
 3. **Description**
-4. **Target Language** (Rust, TypeScript, Python, Go, C#, C)
+4. **Target Language** (Rust, Python, C#, C, Go, Kotlin, D, Zig, TypeScript)
 5. **Sample Features** (Custom command handler, Player join event listener)
 
 #### Non-Interactive / Scriptable Creation
@@ -158,14 +155,32 @@ The wizard prompts for:
 You can also pass arguments directly to skip interactive prompts:
 
 ```bash
-# Scaffold a Rust plugin
-ppm new my-awesome-plugin --lang rust -y
+# Rust
+ppm new my-plugin --lang rust -y
 
-# Scaffold a TypeScript plugin
-ppm new ts-plugin --lang ts -y
+# Python
+ppm new my-plugin --lang py -y
 
-# Scaffold a Python plugin
-ppm new py-plugin --lang py -y
+# C#
+ppm new my-plugin --lang cs -y
+
+# C
+ppm new my-plugin --lang c -y
+
+# Go
+ppm new my-plugin --lang go -y
+
+# Kotlin
+ppm new my-plugin --lang kt -y
+
+# D
+ppm new my-plugin --lang d -y
+
+# Zig
+ppm new my-plugin --lang zig -y
+
+# TypeScript
+ppm new my-plugin --lang ts -y
 ```
 
 ---
@@ -175,7 +190,7 @@ ppm new py-plugin --lang py -y
 | Variable | CLI Flag | Default | Description |
 |---|---|---|---|
 | `PUMPKIN_MARKET_URL` | `--market-url <URL>` | `https://market.pumpkinmc.org` | Pumpkin Marketplace API base URL |
-| `PUMPKIN_PLUGINS_DIR` | `--plugins-dir <DIR>` | `./plugins` | Default directory where plugins are installed |
+| `PUMPKIN_PLUGINS_DIR` | `--plugins-dir <DIR>` | Auto-detected | Directory where plugins are installed (auto-resolves server root vs plugins dir) |
 | `PPM_TOKEN` | `--token <TOKEN>` | `None` | Authentication token for private/paid plugins |
 
 ---

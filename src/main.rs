@@ -33,30 +33,13 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    let plugins_dir = cli.resolved_plugins_dir();
     let client = MarketClient::new(cli.market_url);
 
     match cli.command {
         Commands::Search(args) => {
             let params = ListPluginsParams {
                 q: Some(args.query.clone()),
-                category: args.category,
-                type_: args.type_,
-                page: Some(args.page),
-                limit: Some(args.limit),
-            };
-
-            let plugins = client.list_plugins(&params).await?;
-
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&plugins)?);
-            } else {
-                ui::print_plugins_table(&plugins);
-            }
-        }
-
-        Commands::List(args) => {
-            let params = ListPluginsParams {
-                q: None,
                 category: args.category,
                 type_: args.type_,
                 page: Some(args.page),
@@ -91,7 +74,7 @@ async fn run(cli: Cli) -> Result<()> {
             let installed_path = installer::install_plugin(
                 &client,
                 &args.plugin,
-                &cli.plugins_dir,
+                &plugins_dir,
                 args.output.as_deref(),
                 args.force,
                 args.token.as_deref(),
@@ -130,7 +113,7 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             }
 
-            let removed_path = installer::remove_plugin(&cli.plugins_dir, &args.plugin)?;
+            let removed_path = installer::remove_plugin(&plugins_dir, &args.plugin)?;
             ui::success(format!(
                 "Removed plugin file: {}",
                 removed_path.display().to_string().cyan()
@@ -138,14 +121,14 @@ async fn run(cli: Cli) -> Result<()> {
         }
 
         Commands::Installed(args) => {
-            let installed = installer::scan_installed(&cli.plugins_dir)?;
+            let installed = installer::scan_installed(&plugins_dir)?;
 
             if args.json {
                 println!("{}", serde_json::to_string_pretty(&installed)?);
             } else {
                 println!(
                     "Installed plugins in '{}':",
-                    cli.plugins_dir.display().to_string().cyan()
+                    plugins_dir.display().to_string().cyan()
                 );
                 ui::print_installed_table(&installed);
             }
@@ -155,11 +138,11 @@ async fn run(cli: Cli) -> Result<()> {
             let plugins_to_update = match args.plugin {
                 Some(p) => vec![p],
                 None => {
-                    let installed = installer::scan_installed(&cli.plugins_dir)?;
+                    let installed = installer::scan_installed(&plugins_dir)?;
                     if installed.is_empty() {
                         ui::warn(format!(
                             "No plugins installed in '{}'. Nothing to update.",
-                            cli.plugins_dir.display()
+                            plugins_dir.display()
                         ));
                         return Ok(());
                     }
@@ -190,7 +173,10 @@ async fn run(cli: Cli) -> Result<()> {
                                     ver.bright_green()
                                 ));
                             } else {
-                                ui::warn(format!("Plugin '{}' not found on marketplace.", plugin_name));
+                                ui::warn(format!(
+                                    "Plugin '{}' not found on marketplace.",
+                                    plugin_name
+                                ));
                             }
                         }
                     }
@@ -205,7 +191,7 @@ async fn run(cli: Cli) -> Result<()> {
                 match installer::install_plugin(
                     &client,
                     &plugin_name,
-                    &cli.plugins_dir,
+                    &plugins_dir,
                     None,
                     true,
                     args.token.as_deref(),

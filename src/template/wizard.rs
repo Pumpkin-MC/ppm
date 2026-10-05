@@ -163,9 +163,12 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
         PluginLanguage::Rust => templates::rust::generate(&target_dir, &ctx)?,
         PluginLanguage::TypeScript => templates::typescript::generate(&target_dir, &ctx)?,
         PluginLanguage::Python => templates::python::generate(&target_dir, &ctx)?,
-        PluginLanguage::Go => templates::go::generate(&target_dir, &ctx)?,
         PluginLanguage::CSharp => templates::csharp::generate(&target_dir, &ctx)?,
         PluginLanguage::C => templates::c::generate(&target_dir, &ctx)?,
+        PluginLanguage::Go => templates::go::generate(&target_dir, &ctx)?,
+        PluginLanguage::Kotlin => templates::kotlin::generate(&target_dir, &ctx)?,
+        PluginLanguage::D => templates::d::generate(&target_dir, &ctx)?,
+        PluginLanguage::Zig => templates::zig::generate(&target_dir, &ctx)?,
     }
 
     Ok(target_dir)
