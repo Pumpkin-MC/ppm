@@ -1,0 +1,25 @@
+[package]
+name = "ppm"
+version = "0.1.0"
+edition = "2024"
+authors = ["Alexander Medvedev <lilalexmed@proton.me>", "Pumpkin-MC Contributors"]
+description = "Pumpkin Package Manager - The official CLI tool and package manager for Pumpkin Minecraft server plugins"
+repository = "https://github.com/Pumpkin-MC/ppm"
+homepage = "https://pumpkinmc.org"
+license = "GPL-3.0-or-later"
+keywords = ["pumpkin", "minecraft", "plugin-manager", "wasm", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "cargo", "env"] }
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+inquire = "0.7"
+indicatif = { version = "0.17", features = ["tokio"] }
+comfy-table = "7.1"
+colored = "2.1"
+futures-util = "0.3"
