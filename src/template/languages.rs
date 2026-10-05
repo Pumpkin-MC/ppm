@@ -8,7 +8,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginLanguage {
@@ -99,22 +99,61 @@ mod tests {
 
     #[test]
     fn test_language_parsing() {
-        assert_eq!(PluginLanguage::from_str("rust").unwrap(), PluginLanguage::Rust);
-        assert_eq!(PluginLanguage::from_str("rs").unwrap(), PluginLanguage::Rust);
-        assert_eq!(PluginLanguage::from_str("python").unwrap(), PluginLanguage::Python);
-        assert_eq!(PluginLanguage::from_str("py").unwrap(), PluginLanguage::Python);
-        assert_eq!(PluginLanguage::from_str("csharp").unwrap(), PluginLanguage::CSharp);
-        assert_eq!(PluginLanguage::from_str("cs").unwrap(), PluginLanguage::CSharp);
+        assert_eq!(
+            PluginLanguage::from_str("rust").unwrap(),
+            PluginLanguage::Rust
+        );
+        assert_eq!(
+            PluginLanguage::from_str("rs").unwrap(),
+            PluginLanguage::Rust
+        );
+        assert_eq!(
+            PluginLanguage::from_str("python").unwrap(),
+            PluginLanguage::Python
+        );
+        assert_eq!(
+            PluginLanguage::from_str("py").unwrap(),
+            PluginLanguage::Python
+        );
+        assert_eq!(
+            PluginLanguage::from_str("csharp").unwrap(),
+            PluginLanguage::CSharp
+        );
+        assert_eq!(
+            PluginLanguage::from_str("cs").unwrap(),
+            PluginLanguage::CSharp
+        );
         assert_eq!(PluginLanguage::from_str("c").unwrap(), PluginLanguage::C);
         assert_eq!(PluginLanguage::from_str("go").unwrap(), PluginLanguage::Go);
-        assert_eq!(PluginLanguage::from_str("golang").unwrap(), PluginLanguage::Go);
-        assert_eq!(PluginLanguage::from_str("kotlin").unwrap(), PluginLanguage::Kotlin);
-        assert_eq!(PluginLanguage::from_str("kt").unwrap(), PluginLanguage::Kotlin);
+        assert_eq!(
+            PluginLanguage::from_str("golang").unwrap(),
+            PluginLanguage::Go
+        );
+        assert_eq!(
+            PluginLanguage::from_str("kotlin").unwrap(),
+            PluginLanguage::Kotlin
+        );
+        assert_eq!(
+            PluginLanguage::from_str("kt").unwrap(),
+            PluginLanguage::Kotlin
+        );
         assert_eq!(PluginLanguage::from_str("d").unwrap(), PluginLanguage::D);
-        assert_eq!(PluginLanguage::from_str("dlang").unwrap(), PluginLanguage::D);
-        assert_eq!(PluginLanguage::from_str("zig").unwrap(), PluginLanguage::Zig);
-        assert_eq!(PluginLanguage::from_str("typescript").unwrap(), PluginLanguage::TypeScript);
-        assert_eq!(PluginLanguage::from_str("ts").unwrap(), PluginLanguage::TypeScript);
+        assert_eq!(
+            PluginLanguage::from_str("dlang").unwrap(),
+            PluginLanguage::D
+        );
+        assert_eq!(
+            PluginLanguage::from_str("zig").unwrap(),
+            PluginLanguage::Zig
+        );
+        assert_eq!(
+            PluginLanguage::from_str("typescript").unwrap(),
+            PluginLanguage::TypeScript
+        );
+        assert_eq!(
+            PluginLanguage::from_str("ts").unwrap(),
+            PluginLanguage::TypeScript
+        );
         assert!(PluginLanguage::from_str("unknown_lang").is_err());
     }
 }

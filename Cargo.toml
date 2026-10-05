@@ -13,13 +13,13 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 clap = { version = "4.5", features = ["derive", "cargo", "env"] }
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls", "query"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
-thiserror = "1.0"
-inquire = "0.7"
-indicatif = { version = "0.17", features = ["tokio"] }
-comfy-table = "7.1"
-colored = "2.1"
+thiserror = "2.0"
+inquire = "0.9"
+indicatif = { version = "0.18", features = ["tokio"] }
+comfy-table = "8.0"
+colored = "3.1"
 futures-util = "0.3"

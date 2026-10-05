@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,8 +65,12 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
     }
 
     let mut list = Vec::new();
-    let entries = fs::read_dir(plugins_dir)
-        .with_context(|| format!("Failed to read plugins directory: {}", plugins_dir.display()))?;
+    let entries = fs::read_dir(plugins_dir).with_context(|| {
+        format!(
+            "Failed to read plugins directory: {}",
+            plugins_dir.display()
+        )
+    })?;
 
     for entry in entries {
         let entry = entry?;
@@ -78,7 +82,8 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
 
         let filename = entry.file_name().to_string_lossy().to_string();
         let is_wasm = filename.ends_with(".wasm");
-        let is_deactivated = filename.ends_with(".wasm.deactivated") || filename.ends_with(".deactivated");
+        let is_deactivated =
+            filename.ends_with(".wasm.deactivated") || filename.ends_with(".deactivated");
 
         if is_wasm || is_deactivated {
             let metadata = entry.metadata().ok();
@@ -95,14 +100,17 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
         }
     }
 
-    list.sort_by(|a, b| a.filename.to_lowercase().cmp(&b.filename.to_lowercase()));
+    list.sort_by_key(|a| a.filename.to_lowercase());
     Ok(list)
 }
 
 /// Remove a plugin file from the plugins directory.
 pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     if !plugins_dir.exists() {
-        bail!("Plugins directory '{}' does not exist.", plugins_dir.display());
+        bail!(
+            "Plugins directory '{}' does not exist.",
+            plugins_dir.display()
+        );
     }
 
     let trimmed = plugin.trim();
@@ -127,7 +135,11 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
         match found {
             Some(p) => p.path,
             None => {
-                bail!("Plugin '{}' not found in '{}'", trimmed, plugins_dir.display());
+                bail!(
+                    "Plugin '{}' not found in '{}'",
+                    trimmed,
+                    plugins_dir.display()
+                );
             }
         }
     };

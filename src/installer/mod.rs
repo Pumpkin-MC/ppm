@@ -10,7 +10,7 @@ pub mod local;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::io::AsyncWriteExt;
@@ -71,7 +71,9 @@ pub async fn install_plugin(
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
-                .template("{spinner:.green} [{elapsed_precise}] {bytes} downloaded ({bytes_per_sec})")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] {bytes} downloaded ({bytes_per_sec})",
+                )
                 .unwrap(),
         );
         pb

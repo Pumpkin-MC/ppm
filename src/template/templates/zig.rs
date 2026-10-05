@@ -39,8 +39,7 @@ pub fn build(b: *std.Build) void {{
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("build.zig"), build_zig)
-        .context("Failed to write build.zig")?;
+    fs::write(dir.join("build.zig"), build_zig).context("Failed to write build.zig")?;
 
     // build.zig.zon
     let build_zon = format!(
@@ -58,8 +57,7 @@ pub fn build(b: *std.Build) void {{
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("build.zig.zon"), build_zon)
-        .context("Failed to write build.zig.zon")?;
+    fs::write(dir.join("build.zig.zon"), build_zon).context("Failed to write build.zig.zon")?;
 
     // .gitignore
     let gitignore = r#".zig-cache/
@@ -67,8 +65,7 @@ zig-out/
 *.wasm
 *.o
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // src/main.zig
     let main_zig = format!(
@@ -133,8 +130,7 @@ export fn exports_plugin_init_plugin() callconv(.C) void {{
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("src/main.zig"), main_zig)
-        .context("Failed to write src/main.zig")?;
+    fs::write(dir.join("src/main.zig"), main_zig).context("Failed to write src/main.zig")?;
 
     // README.md
     let readme = format!(
@@ -166,8 +162,7 @@ Copy `{name}.wasm` to your Pumpkin server's `plugins/` directory.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

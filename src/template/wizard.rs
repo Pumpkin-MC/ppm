@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use inquire::{Confirm, MultiSelect, Select, Text};
 
 use super::languages::PluginLanguage;
@@ -68,7 +68,7 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
         }
     };
 
-    let default_desc = format!("A Pumpkin server plugin");
+    let default_desc = "A Pumpkin server plugin".to_string();
     let description = match config.description {
         Some(d) if !d.trim().is_empty() => d.trim().to_string(),
         _ => {
@@ -146,9 +146,8 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             }
         }
     } else {
-        fs::create_dir_all(&target_dir).with_context(|| {
-            format!("Failed to create directory '{}'", target_dir.display())
-        })?;
+        fs::create_dir_all(&target_dir)
+            .with_context(|| format!("Failed to create directory '{}'", target_dir.display()))?;
     }
 
     let ctx = TemplateContext {

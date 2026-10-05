@@ -60,8 +60,7 @@ void pumpkin_register_plugin(pumpkin_plugin_t plugin);
 
 #endif
 "#;
-    fs::write(dir.join("pumpkin_api.h"), pumpkin_api_h)
-        .context("Failed to write pumpkin_api.h")?;
+    fs::write(dir.join("pumpkin_api.h"), pumpkin_api_h).context("Failed to write pumpkin_api.h")?;
 
     // plugin.c
     let plugin_c = format!(

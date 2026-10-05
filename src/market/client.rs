@@ -7,8 +7,8 @@
 
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
-use reqwest::{header, Client, StatusCode};
+use anyhow::{Context, Result, bail};
+use reqwest::{Client, StatusCode, header};
 
 use super::models::{CheckUpdateResponse, ExternalPluginMetadata, ListPluginsParams};
 
@@ -81,12 +81,11 @@ impl MarketClient {
         let direct_url = format!("{}/api/v1/rest/plugins/{}", self.base_url, trimmed);
         let resp = self.http.get(&direct_url).send().await;
 
-        if let Ok(res) = resp {
-            if res.status() == StatusCode::OK {
-                if let Ok(plugin) = res.json::<ExternalPluginMetadata>().await {
-                    return Ok(plugin);
-                }
-            }
+        if let Ok(res) = resp
+            && res.status() == StatusCode::OK
+            && let Ok(plugin) = res.json::<ExternalPluginMetadata>().await
+        {
+            return Ok(plugin);
         }
 
         // 2. Search by query to find matching name
@@ -146,7 +145,8 @@ impl MarketClient {
             bail!("Check update failed with status: {}", resp.status());
         }
 
-        let check: CheckUpdateResponse = resp.json().await.context("Failed to parse update info")?;
+        let check: CheckUpdateResponse =
+            resp.json().await.context("Failed to parse update info")?;
         Ok(check)
     }
 
@@ -219,7 +219,11 @@ impl MarketClient {
 
 /// Helper to parse filename from Content-Disposition header.
 fn extract_filename(resp: &reqwest::Response) -> Option<String> {
-    let header_val = resp.headers().get(header::CONTENT_DISPOSITION)?.to_str().ok()?;
+    let header_val = resp
+        .headers()
+        .get(header::CONTENT_DISPOSITION)?
+        .to_str()
+        .ok()?;
 
     // Example header: attachment; filename="EpicRTP.wasm"; filename*=UTF-8''EpicRTP.wasm
     for part in header_val.split(';') {

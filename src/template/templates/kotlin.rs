@@ -13,28 +13,26 @@ use anyhow::{Context, Result};
 use super::TemplateContext;
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
-    let pkg_name = ctx.name.replace('-', "").replace('_', "").to_lowercase();
+    let pkg_name = ctx.name.replace(['-', '_'], "").to_lowercase();
     let src_dir = dir.join("src/wasmWasiMain/kotlin").join(&pkg_name);
     fs::create_dir_all(&src_dir)?;
 
     // build.gradle.kts
-    let build_gradle = format!(
-        r#"plugins {{
+    let build_gradle = r#"plugins {
     kotlin("multiplatform") version "2.4.0"
-}}
+}
 
-repositories {{
+repositories {
     mavenCentral()
-}}
+}
 
-kotlin {{
+kotlin {
     @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
-    wasmWasi {{
+    wasmWasi {
         binaries.executable()
-    }}
-}}
-"#
-    );
+    }
+}
+"#;
     fs::write(dir.join("build.gradle.kts"), build_gradle)
         .context("Failed to write build.gradle.kts")?;
 
@@ -58,8 +56,7 @@ kotlin {{
 build/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // Main.kt
     let struct_name = ctx.struct_name();
@@ -93,8 +90,7 @@ fun main() {{
         desc = ctx.description,
         struct_name = struct_name
     );
-    fs::write(src_dir.join("Main.kt"), main_kt)
-        .context("Failed to write Main.kt")?;
+    fs::write(src_dir.join("Main.kt"), main_kt).context("Failed to write Main.kt")?;
 
     // README.md
     let readme = format!(
@@ -127,8 +123,7 @@ Copy the `.wasm` file into your Pumpkin server's `plugins/` directory.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

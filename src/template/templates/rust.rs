@@ -36,8 +36,7 @@ tracing = "0.1"
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("Cargo.toml"), cargo_toml)
-        .context("Failed to write Cargo.toml")?;
+    fs::write(dir.join("Cargo.toml"), cargo_toml).context("Failed to write Cargo.toml")?;
 
     // .cargo/config.toml
     let cargo_config = r#"[build]
@@ -51,8 +50,7 @@ target = "wasm32-wasip2"
 **/*.rs.bk
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // src/lib.rs
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -86,6 +84,8 @@ target = "wasm32-wasip2"
 "#,
         );
 
+        let cmd_struct = format!("{}CommandHandler", ctx.struct_name());
+
         handlers.push_str(&format!(
             r#"/// Handles the '/{name}' custom command.
 struct {cmd_struct};
@@ -106,7 +106,7 @@ impl CommandHandler for {cmd_struct} {{
 }}
 "#,
             name = ctx.name,
-            cmd_struct = format!("{}CommandHandler", ctx.struct_name())
+            cmd_struct = cmd_struct
         ));
 
         on_load_body.push_str(&format!(
@@ -115,7 +115,7 @@ impl CommandHandler for {cmd_struct} {{
         context.register_command(cmd, {cmd_struct});
 "#,
             name = ctx.name,
-            cmd_struct = format!("{}CommandHandler", ctx.struct_name())
+            cmd_struct = cmd_struct
         ));
     }
 
@@ -128,25 +128,25 @@ impl CommandHandler for {cmd_struct} {{
 "#,
         );
 
-        handlers.push_str(&format!(
+        handlers.push_str(
             r#"/// Listens for players joining the server.
 struct JoinListener;
 
-impl EventHandler<PlayerJoinEvent> for JoinListener {{
-    fn handle(&self, _server: Server, event: PlayerJoinEventData) -> PlayerJoinEventData {{
+impl EventHandler<PlayerJoinEvent> for JoinListener {
+    fn handle(&self, _server: Server, event: PlayerJoinEventData) -> PlayerJoinEventData {
         let name = event.player.get_name();
-        tracing::info!("Player joined: {{name}}");
+        tracing::info!("Player joined: {name}");
 
         event.player.send_system_message(
-            TextComponent::text(&format!("Welcome to the server, {{name}}!")),
+            TextComponent::text(&format!("Welcome to the server, {name}!")),
             false,
         );
 
         event
-    }}
-}}
-"#
-        ));
+    }
+}
+"#,
+        );
 
         on_load_body.push_str(
             r#"        // Register player join event handler
@@ -205,8 +205,7 @@ register_plugin!({struct_name});
         on_load_body = on_load_body
     );
 
-    fs::write(dir.join("src/lib.rs"), lib_rs)
-        .context("Failed to write src/lib.rs")?;
+    fs::write(dir.join("src/lib.rs"), lib_rs).context("Failed to write src/lib.rs")?;
 
     // README.md
     let readme = format!(
@@ -254,8 +253,7 @@ ppm installed
         desc = ctx.description,
         name_underscores = ctx.name.replace('-', "_")
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

@@ -39,8 +39,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("package.json"), package_json)
-        .context("Failed to write package.json")?;
+    fs::write(dir.join("package.json"), package_json).context("Failed to write package.json")?;
 
     // tsconfig.json
     let tsconfig = r#"{
@@ -56,16 +55,14 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
   "include": ["src/**/*"]
 }
 "#;
-    fs::write(dir.join("tsconfig.json"), tsconfig)
-        .context("Failed to write tsconfig.json")?;
+    fs::write(dir.join("tsconfig.json"), tsconfig).context("Failed to write tsconfig.json")?;
 
     // .gitignore
     let gitignore = r#"node_modules/
 dist/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // src/index.ts
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -82,27 +79,29 @@ dist/
     );
 
     if ctx.include_event {
-        imports.push(r#"import { PlayerJoinEventData } from "pumpkin:plugin/event@0.1.0";"#.to_string());
+        imports.push(
+            r#"import { PlayerJoinEventData } from "pumpkin:plugin/event@0.1.0";"#.to_string(),
+        );
         imports.push(r#"import { TextComponent } from "pumpkin:plugin/text@0.1.0";"#.to_string());
 
-        load_body.push_str(&format!(
+        load_body.push_str(
             r#"
     // Register player join event listener
     this.registerEvent(
       ctx,
       "player-join-event",
-      (_srv, evt: PlayerJoinEventData) => {{
-        logging.log("info", `Player ${{evt.player.getName()}} joined the game!`);
+      (_srv, evt: PlayerJoinEventData) => {
+        logging.log("info", `Player ${evt.player.getName()} joined the game!`);
         evt.player
           .getWorld()
           .broadcastSystemMessage(
-            TextComponent.text(`Welcome ${{evt.player.getName()}} to the server!`),
+            TextComponent.text(`Welcome ${evt.player.getName()} to the server!`),
             false,
           );
-      }},
+      },
     );
-"#
-        ));
+"#,
+        );
     }
 
     let index_ts = format!(
@@ -137,8 +136,7 @@ export * from "@pumpkinmc/pumpkin-api-ts";
         load_body = load_body
     );
 
-    fs::write(dir.join("src/index.ts"), index_ts)
-        .context("Failed to write src/index.ts")?;
+    fs::write(dir.join("src/index.ts"), index_ts).context("Failed to write src/index.ts")?;
 
     // README.md
     let readme = format!(
@@ -166,8 +164,7 @@ A TypeScript plugin for Pumpkin Minecraft Server compiled to WebAssembly.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

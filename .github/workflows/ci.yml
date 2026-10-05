@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  lint:
+    name: Formatting & Clippy Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check code formatting
+        run: cargo fmt --check
+
+      - name: Run clippy checks
+        run: cargo clippy -- -D warnings
+
+  test:
+    name: Test & Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Build release binary
+        run: cargo build --release --verbose
+
+      - name: Verify CLI executable
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./target/release/ppm.exe --help
+            ./target/release/ppm.exe new test-rust --lang rust -y --dir ./test-rust
+          else
+            ./target/release/ppm --help
+            ./target/release/ppm new test-rust --lang rust -y --dir ./test-rust
+          fi

@@ -34,8 +34,7 @@ dependencies = [
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("pyproject.toml"), pyproject)
-        .context("Failed to write pyproject.toml")?;
+    fs::write(dir.join("pyproject.toml"), pyproject).context("Failed to write pyproject.toml")?;
 
     // .gitignore
     let gitignore = r#"__pycache__/
@@ -46,15 +45,15 @@ build/
 *.wasm
 .venv/
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // plugin.py
     let struct_name = format!("{}Plugin", ctx.struct_name());
     let mut methods = String::new();
-    let mut on_load_lines = vec![
-        format!("        logging.log(logging.Level.INFO, \"{} plugin loaded!\")", ctx.name),
-    ];
+    let mut on_load_lines = vec![format!(
+        "        logging.log(logging.Level.INFO, \"{} plugin loaded!\")",
+        ctx.name
+    )];
 
     if ctx.include_command {
         on_load_lines.push(format!(
@@ -140,8 +139,7 @@ register_plugin({struct_name})
         methods = methods
     );
 
-    fs::write(dir.join("plugin.py"), plugin_py)
-        .context("Failed to write plugin.py")?;
+    fs::write(dir.join("plugin.py"), plugin_py).context("Failed to write plugin.py")?;
 
     // README.md
     let readme = format!(
@@ -166,8 +164,7 @@ A Python plugin for the Pumpkin Minecraft Server.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

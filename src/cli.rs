@@ -55,10 +55,10 @@ pub fn resolve_plugins_dir(explicit: Option<&Path>) -> PathBuf {
         return dir.to_path_buf();
     }
 
-    if let Ok(env_dir) = std::env::var("PUMPKIN_PLUGINS_DIR") {
-        if !env_dir.trim().is_empty() {
-            return PathBuf::from(env_dir);
-        }
+    if let Ok(env_dir) = std::env::var("PUMPKIN_PLUGINS_DIR")
+        && !env_dir.trim().is_empty()
+    {
+        return PathBuf::from(env_dir);
     }
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -118,6 +118,10 @@ pub enum Commands {
     /// Scaffold a new plugin project template (interactive TUI or flag-driven)
     #[command(visible_alias = "init", visible_alias = "create")]
     New(NewArgs),
+
+    /// Install ppm into your user/system PATH (~/.local/bin)
+    #[command(visible_alias = "setup")]
+    SelfInstall(SelfInstallArgs),
 }
 
 #[derive(Args, Debug)]
@@ -229,6 +233,17 @@ pub struct NewArgs {
     /// Do not prompt interactively; use defaults for unspecified options
     #[arg(short = 'y', long = "non-interactive")]
     pub non_interactive: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct SelfInstallArgs {
+    /// Custom target directory (defaults to ~/.local/bin)
+    #[arg(short, long)]
+    pub dir: Option<PathBuf>,
+
+    /// Force overwrite existing binary if already present
+    #[arg(short, long)]
+    pub force: bool,
 }
 
 #[cfg(test)]

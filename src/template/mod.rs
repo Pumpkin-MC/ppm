@@ -10,4 +10,4 @@ pub mod templates;
 pub mod wizard;
 
 pub use languages::PluginLanguage;
-pub use wizard::{run_wizard, WizardConfig};
+pub use wizard::{WizardConfig, run_wizard};

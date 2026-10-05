@@ -23,12 +23,10 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
   </packageSources>
 </configuration>
 "#;
-    fs::write(dir.join("NuGet.Config"), nuget_config)
-        .context("Failed to write NuGet.Config")?;
+    fs::write(dir.join("NuGet.Config"), nuget_config).context("Failed to write NuGet.Config")?;
 
     // .csproj
-    let csproj = format!(
-        r#"<Project Sdk="Microsoft.NET.Sdk">
+    let csproj = r#"<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -41,8 +39,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     <PackageReference Include="ByteCodeAlliance.Componentize.DotNet.Wasm.SDK" Version="*" />
   </ItemGroup>
 </Project>
-"#
-    );
+"#;
     let csproj_name = format!("{struct_name}.csproj");
     fs::write(dir.join(&csproj_name), csproj)
         .with_context(|| format!("Failed to write {csproj_name}"))?;
@@ -52,8 +49,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
 obj/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore)
-        .context("Failed to write .gitignore")?;
+    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
 
     // Plugin.cs
     let plugin_cs = format!(
@@ -103,8 +99,7 @@ public class {struct_name}Plugin : IPluginWorldExports, IMetadataExports
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("Plugin.cs"), plugin_cs)
-        .context("Failed to write Plugin.cs")?;
+    fs::write(dir.join("Plugin.cs"), plugin_cs).context("Failed to write Plugin.cs")?;
 
     // README.md
     let readme = format!(
@@ -125,8 +120,7 @@ Copy the compiled `.wasm` file from `bin/Release/net10.0/wasi-wasm/` into your P
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme)
-        .context("Failed to write README.md")?;
+    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
 
     Ok(())
 }

@@ -8,6 +8,7 @@
 mod cli;
 mod installer;
 mod market;
+mod self_install;
 mod template;
 mod ui;
 
@@ -33,6 +34,9 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    // Attempt automatic self-install to user PATH on first run (like cargo/rustup)
+    let _ = self_install::ensure_installed_in_path();
+
     let plugins_dir = cli.resolved_plugins_dir();
     let client = MarketClient::new(cli.market_url);
 
@@ -93,8 +97,7 @@ async fn run(cli: Cli) -> Result<()> {
             ));
             println!(
                 "  {}",
-                "Your Pumpkin server will load this plugin on next startup or reload."
-                    .dimmed()
+                "Your Pumpkin server will load this plugin on next startup or reload.".dimmed()
             );
         }
 
@@ -183,10 +186,7 @@ async fn run(cli: Cli) -> Result<()> {
                     continue;
                 }
 
-                ui::info(format!(
-                    "Checking and updating '{}'...",
-                    plugin_name.cyan()
-                ));
+                ui::info(format!("Checking and updating '{}'...", plugin_name.cyan()));
 
                 match installer::install_plugin(
                     &client,
@@ -248,8 +248,14 @@ async fn run(cli: Cli) -> Result<()> {
             println!("     {}", format!("cd {}", project_path.display()).cyan());
             println!("  2. Read the instructions:");
             println!("     {}", "cat README.md".cyan());
-            println!("  3. Build your WebAssembly plugin and copy to Pumpkin's plugins/ directory!");
+            println!(
+                "  3. Build your WebAssembly plugin and copy to Pumpkin's plugins/ directory!"
+            );
             println!();
+        }
+
+        Commands::SelfInstall(args) => {
+            self_install::install_self(args.dir.as_deref(), args.force)?;
         }
     }
 

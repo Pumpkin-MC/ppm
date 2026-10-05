@@ -6,8 +6,7 @@
 // (at your option) any later version.
 
 use colored::Colorize;
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
-use comfy_table::presets::UTF8_FULL;
+use comfy_table::presets;
 use comfy_table::{Cell, CellAlignment, Color, ContentArrangement, Table};
 
 use crate::installer::InstalledPlugin;
@@ -38,8 +37,7 @@ pub fn print_plugins_table(plugins: &[ExternalPluginMetadata]) {
 
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
-        .apply_modifier(UTF8_ROUND_CORNERS)
+        .load_style(presets::UTF8_FULL.with_rounded_corners())
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
             Cell::new("ID").fg(Color::DarkGrey),
@@ -116,9 +114,17 @@ pub fn print_plugin_details(p: &ExternalPluginMetadata) {
     println!("  {:<16} {}", "Author:".bold(), p.dev_name.white());
     println!("  {:<16} {}", "Category:".bold(), category_str.magenta());
     println!("  {:<16} {}", "Type:".bold(), type_str);
-    println!("  {:<16} {}", "Downloads:".bold(), p.downloads.to_string().blue());
+    println!(
+        "  {:<16} {}",
+        "Downloads:".bold(),
+        p.downloads.to_string().blue()
+    );
     println!("  {:<16} {}", "Public ID:".bold(), p.public_id.dimmed());
-    println!("  {:<16} {}", "Database ID:".bold(), p.id.to_string().dimmed());
+    println!(
+        "  {:<16} {}",
+        "Database ID:".bold(),
+        p.id.to_string().dimmed()
+    );
     println!("  {:<16} {}", "Last Updated:".bold(), p.updated_at.dimmed());
 
     if let Some(preview) = &p.preview_url {
@@ -147,8 +153,7 @@ pub fn print_installed_table(plugins: &[InstalledPlugin]) {
 
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
-        .apply_modifier(UTF8_ROUND_CORNERS)
+        .load_style(presets::UTF8_FULL.with_rounded_corners())
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
             Cell::new("Plugin File").fg(Color::Yellow),

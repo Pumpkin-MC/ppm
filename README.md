@@ -10,26 +10,7 @@ It allows server administrators and developers to effortlessly search and downlo
 
 ---
 
-## 🌟 Key Features
-
-- 🔍 **Marketplace Search & Discovery**: Search and inspect plugin details directly from `market.pumpkinmc.org`.
-- 📥 **Context-Aware Installation**: Automatically detects if executed inside Pumpkin server root (`./plugins`) or inside the `plugins/` folder directly (`.`), or allows custom paths.
-- 📦 **Local Plugin Management**: List active/deactivated plugins, check file sizes, and safely remove plugins.
-- 🔄 **Plugin Updates**: Check for updates and automatically upgrade installed plugins to the latest release.
-- 🚀 **Multi-Language Plugin Scaffolding**: Rapidly bootstrap new Pumpkin plugins with a friendly TUI wizard supporting:
-  - 🦀 **Rust** (`pumpkin-plugin-api`)
-  - 🐍 **Python** (`pumpkin-api`)
-  - 🟣 **C# (.NET 10+)** (`PumpkinMC.PumpkinApi`)
-  - 🇨 **C** (`pumpkin_api.h`)
-  - 🐹 **Go** (`github.com/Pumpkin-MC/pumpkin-api-go`)
-  - 🟣 **Kotlin** (wasmWasi Multiplatform)
-  - 🔷 **D** (dlang with LDC `wasm32-wasi`)
-  - ⚡ **Zig** (native `wasm32-wasi` target)
-  - 🟨 **TypeScript / JavaScript** (`@pumpkinmc/pumpkin-api-ts`)
-
----
-
-## 🚀 Installation
+## Installation
 
 ### From Source
 
@@ -50,7 +31,7 @@ cargo build --release
 
 ---
 
-## 📖 Command Reference
+## Command Reference
 
 ### 1. Searching the Marketplace
 
@@ -185,7 +166,7 @@ ppm new my-plugin --lang ts -y
 
 ---
 
-## ⚙️ Configuration & Environment Variables
+## Configuration & Environment Variables
 
 | Variable | CLI Flag | Default | Description |
 |---|---|---|---|
@@ -195,6 +176,6 @@ ppm new my-plugin --lang ts -y
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **GNU General Public License v3.0** (GPL-3.0-or-later) - see the [LICENSE](LICENSE) file for details.
