@@ -152,7 +152,7 @@ pub struct SearchArgs {
 
 #[derive(Args, Debug)]
 pub struct InfoArgs {
-    /// Plugin name, database ID, or public ID
+    /// Plugin name, database ID, public ID, author/plugin, or marketplace URL
     pub plugin: String,
 
     /// Output plugin details as JSON
@@ -162,10 +162,12 @@ pub struct InfoArgs {
 
 #[derive(Args, Debug)]
 pub struct InstallArgs {
-    /// Plugin name, database ID, or public ID to install
-    pub plugin: String,
+    /// Plugin name(s), database ID(s), public ID(s), author/plugin, marketplace URL(s), or direct .wasm URL(s).
+    /// If omitted, restores all marketplace plugins from .ppm.lock
+    #[arg(num_args = 0..)]
+    pub plugins: Vec<String>,
 
-    /// Custom output file name or path
+    /// Custom output file name or path (only valid when installing a single plugin)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
@@ -180,8 +182,9 @@ pub struct InstallArgs {
 
 #[derive(Args, Debug)]
 pub struct UninstallArgs {
-    /// Plugin name or filename to remove
-    pub plugin: String,
+    /// Plugin name(s), filename(s), ID(s), or marketplace URL(s) to remove
+    #[arg(required = true, num_args = 1..)]
+    pub plugins: Vec<String>,
 
     /// Skip confirmation prompt
     #[arg(short, long)]

@@ -6,6 +6,7 @@
 // (at your option) any later version.
 
 pub mod local;
+pub mod lockfile;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,18 +16,27 @@ use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::io::AsyncWriteExt;
 
-use crate::market::MarketClient;
+use crate::market::{ExternalPluginMetadata, MarketClient, PluginTarget, parse_plugin_input};
 pub use local::*;
+pub use lockfile::*;
 
-/// Downloads and installs a plugin from the marketplace into the destination plugins directory.
+/// Outcome of installing a plugin.
+#[derive(Debug, Clone)]
+pub struct InstalledOutcome {
+    pub path: PathBuf,
+    pub display_name: String,
+    pub metadata: Option<ExternalPluginMetadata>,
+}
+
+/// Downloads and installs a plugin from the marketplace or a direct URL into the destination plugins directory.
 pub async fn install_plugin(
     client: &MarketClient,
-    plugin_name_or_id: &str,
+    plugin_name_or_url: &str,
     plugins_dir: &Path,
     custom_output: Option<&Path>,
     force: bool,
     token: Option<&str>,
-) -> Result<PathBuf> {
+) -> Result<InstalledOutcome> {
     if !plugins_dir.exists() {
         fs::create_dir_all(plugins_dir).with_context(|| {
             format!(
@@ -36,8 +46,12 @@ pub async fn install_plugin(
         })?;
     }
 
-    // Initiate download
-    let (resp, default_filename) = client.download_plugin(plugin_name_or_id, token).await?;
+    // Initiate download based on target type
+    let parsed = parse_plugin_input(plugin_name_or_url);
+    let (resp, default_filename, display_name, metadata) = match parsed {
+        PluginTarget::DirectUrl(url) => client.download_direct_url(&url, token).await?,
+        PluginTarget::Marketplace(target) => client.download_plugin(&target, token).await?,
+    };
 
     let dest_path = if let Some(custom) = custom_output {
         if custom.is_absolute() {
@@ -112,5 +126,25 @@ pub async fn install_plugin(
         )
     })?;
 
-    Ok(dest_path)
+    let outcome = InstalledOutcome {
+        path: dest_path,
+        display_name,
+        metadata: metadata.clone(),
+    };
+
+    // Only for plugins coming from the marketplace: record into .ppm.lock
+    if let Some(meta) = &metadata
+        && let Ok(mut lockfile) = Lockfile::load_from_dir(plugins_dir)
+    {
+        let filename = outcome
+            .path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        lockfile.record_marketplace_plugin(meta, &filename);
+        let _ = lockfile.save_to_dir(plugins_dir);
+    }
+
+    Ok(outcome)
 }

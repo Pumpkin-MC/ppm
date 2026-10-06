@@ -69,13 +69,33 @@ Download and install a plugin directly:
 # Executed in Pumpkin server root -> installs to ./plugins/
 ppm install AppleSkinPumpkin
 
+# Paste entire URL from marketplace
+ppm install https://market.pumpkinmc.org/plugin/S1zisQxa
+
+# Install from a direct external download URL (.wasm)
+ppm install https://github.com/Pumpkin-MC/example/releases/download/v1.0.0/example.wasm
+
+# Install by author namespace or unique public ID
+ppm install alex/economy
+ppm install S1zisQxa
+
+# Restore all marketplace plugins recorded in .ppm.lock
+ppm install
+
+# Interactive ambiguity resolution:
+# If multiple plugins share the same name, ppm interactively prompts
+# you to select which one you want (displaying author, version, and downloads).
+
 # Executed directly inside the plugins folder -> installs to ./
 ppm install AppleSkinPumpkin
+
+# Install multiple plugins in batch
+ppm install AppleSkin Essentials Economy
 
 # Install to custom plugins directory
 ppm install AppleSkinPumpkin --plugins-dir /path/to/server/plugins
 
-# Install with custom filename
+# Install with custom filename (single plugin)
 ppm install AppleSkinPumpkin -o custom_appleskin.wasm
 
 # Force overwrite existing file
@@ -84,6 +104,14 @@ ppm install AppleSkinPumpkin --force
 # Install paid/private plugin with access token
 ppm install PaidPlugin --token <YOUR_TOKEN>
 ```
+
+#### Deterministic Lockfile (`.ppm.lock`)
+
+When installing plugins from the Pumpkin Marketplace, `ppm` automatically tracks them in a `.ppm.lock` file inside your plugins directory.
+- **Unambiguous Tracking:** Records the plugin's exact marketplace `public_id`, author, version, and local file name.
+- **Marketplace Only:** Direct URL downloads (`http://` / `https://`) are installed directly and not tracked in the lockfile.
+- **One-Command Restore:** Run `ppm install` with no arguments on a new server deployment or CI/CD pipeline to automatically install all plugins from `.ppm.lock`.
+- **Automatic Sync:** Running `ppm uninstall <plugin>` cleanly removes the entry from `.ppm.lock`.
 
 ### 4. Managing Installed Plugins
 
@@ -95,18 +123,18 @@ ppm installed
 ppm ls
 ```
 
-Remove an installed plugin:
+Remove installed plugin(s):
 
 ```bash
 ppm uninstall AppleSkinPumpkin
-# Skip confirmation prompt:
-ppm uninstall AppleSkinPumpkin -y
+# Remove multiple plugins at once:
+ppm uninstall AppleSkin Essentials Economy -y
 ```
 
 Check for available updates:
 
 ```bash
-# Check all installed plugins for updates
+# Check all installed plugins for updates (utilizes .ppm.lock for exact IDs)
 ppm update --check
 
 # Upgrade a specific plugin
@@ -163,6 +191,15 @@ ppm new my-plugin --lang zig -y
 # TypeScript
 ppm new my-plugin --lang ts -y
 ```
+
+### 6. Automatic Shell Completions
+
+Shell completions for **Bash**, **Zsh**, and **Fish** are **automatically installed and configured by default** whenever `ppm` runs or when you run `ppm self-install`. No manual commands or completion flags are required!
+
+Completions are automatically placed into:
+- **Bash:** `~/.local/share/bash-completion/completions/ppm` (and sourced via `~/.bashrc`)
+- **Zsh:** `~/.zfunc/_ppm` (and loaded via `~/.zshrc`)
+- **Fish:** `~/.config/fish/completions/ppm.fish` (automatically loaded by Fish)
 
 ---
 

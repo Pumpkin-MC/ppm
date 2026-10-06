@@ -10,7 +10,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use clap::CommandFactory;
+use clap_complete::{Shell, generate};
 
+use crate::cli::Cli;
 use crate::ui;
 
 /// Determines the standard target directory for installing ppm as a normal CLI app (~/.local/bin or /usr/local/bin).
@@ -77,21 +80,24 @@ pub fn ensure_installed_in_path() -> Result<()> {
     let target_exe_name = if cfg!(windows) { "ppm.exe" } else { "ppm" };
     let target_exe_path = target_bin_dir.join(target_exe_name);
 
-    // If already running from the target path, nothing to do
+    // If already running from the target path, ensure completions exist and return
     if let (Ok(canon_cur), Ok(canon_target)) =
         (current_exe.canonicalize(), target_exe_path.canonicalize())
         && canon_cur == canon_target
     {
+        ensure_completions_if_missing();
         return Ok(());
     }
 
-    // If ppm is already installed at the destination, don't overwrite on normal runs
+    // If ppm is already installed at the destination, ensure completions exist
     if target_exe_path.exists() {
+        ensure_completions_if_missing();
         return Ok(());
     }
 
     // Install to PATH
     install_to(&current_exe, &target_exe_path, &target_bin_dir)?;
+    install_all_completions();
 
     Ok(())
 }
@@ -117,10 +123,26 @@ pub fn install_self(custom_dir: Option<&Path>, force: bool) -> Result<PathBuf> {
             "ppm is already running from the installed location: {}",
             target_exe_path.display()
         ));
+        let shells = install_all_completions();
+        if !shells.is_empty() {
+            ui::success(format!(
+                "Configured shell completions for: {}",
+                shells.join(", ")
+            ));
+        }
         return Ok(target_exe_path);
     }
 
     install_to(&current_exe, &target_exe_path, &target_bin_dir)?;
+
+    let shells = install_all_completions();
+    if !shells.is_empty() {
+        ui::success(format!(
+            "Configured shell completions for: {}",
+            shells.join(", ")
+        ));
+    }
+
     Ok(target_exe_path)
 }
 
@@ -171,4 +193,115 @@ fn install_to(current_exe: &Path, target_exe_path: &Path, target_bin_dir: &Path)
     }
 
     Ok(())
+}
+
+/// Generates shell completion script string for the given shell.
+pub fn generate_completion_string(shell: Shell) -> String {
+    let mut buf = Vec::new();
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "ppm", &mut buf);
+    String::from_utf8(buf).unwrap_or_default()
+}
+
+/// Ensures shell completions are installed if any standard files are missing.
+fn ensure_completions_if_missing() {
+    let home = match env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return,
+    };
+
+    let bash_file = home.join(".local/share/bash-completion/completions/ppm");
+    let zsh_file = home.join(".zfunc/_ppm");
+    let fish_file = home.join(".config/fish/completions/ppm.fish");
+
+    if !bash_file.exists() || !zsh_file.exists() || !fish_file.exists() {
+        let _ = install_all_completions();
+    }
+}
+
+/// Automatically installs shell completion scripts into standard user shell directories.
+/// Returns a list of shells that were successfully configured.
+pub fn install_all_completions() -> Vec<String> {
+    let home = match env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return Vec::new(),
+    };
+
+    let mut configured = Vec::new();
+
+    // 1. Bash
+    let bash_dir = home.join(".local/share/bash-completion/completions");
+    if fs::create_dir_all(&bash_dir).is_ok() {
+        let bash_file = bash_dir.join("ppm");
+        let script = generate_completion_string(Shell::Bash);
+        if fs::write(&bash_file, script).is_ok() {
+            configured.push("Bash".to_string());
+        }
+    }
+
+    // Ensure ~/.bashrc sources the completion file
+    let bashrc = home.join(".bashrc");
+    if bashrc.is_file()
+        && let Ok(content) = fs::read_to_string(&bashrc)
+    {
+        let marker = "# ppm shell completion";
+        if !content.contains(marker) && !content.contains("bash-completion/completions/ppm") {
+            let snippet = format!(
+                "\n{marker}\n[[ -r ~/.local/share/bash-completion/completions/ppm ]] && source ~/.local/share/bash-completion/completions/ppm\n"
+            );
+            let _ = fs::OpenOptions::new()
+                .append(true)
+                .open(&bashrc)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, snippet.as_bytes()));
+        }
+    }
+
+    // 2. Fish
+    let fish_dir = home.join(".config/fish/completions");
+    if fs::create_dir_all(&fish_dir).is_ok() {
+        let fish_file = fish_dir.join("ppm.fish");
+        let script = generate_completion_string(Shell::Fish);
+        if fs::write(&fish_file, script).is_ok() {
+            configured.push("Fish".to_string());
+        }
+    }
+
+    // 3. Zsh
+    let zfunc_dir = home.join(".zfunc");
+    if fs::create_dir_all(&zfunc_dir).is_ok() {
+        let zsh_file = zfunc_dir.join("_ppm");
+        let script = generate_completion_string(Shell::Zsh);
+        if fs::write(&zsh_file, script).is_ok() {
+            configured.push("Zsh".to_string());
+        }
+    }
+
+    let zsh_site_dir = home.join(".local/share/zsh/site-functions");
+    if fs::create_dir_all(&zsh_site_dir).is_ok() {
+        let zsh_site_file = zsh_site_dir.join("_ppm");
+        let script = generate_completion_string(Shell::Zsh);
+        let _ = fs::write(&zsh_site_file, script);
+    }
+
+    // Ensure ~/.zshrc includes the completion
+    let zshrc = home.join(".zshrc");
+    if zshrc.is_file()
+        && let Ok(content) = fs::read_to_string(&zshrc)
+    {
+        let marker = "# ppm shell completion";
+        if !content.contains(marker)
+            && !content.contains(".zfunc/_ppm")
+            && !content.contains("_ppm")
+        {
+            let snippet = format!(
+                "\n{marker}\n[[ -f ~/.zfunc/_ppm ]] && fpath=(~/.zfunc $fpath) && autoload -Uz _ppm && compdef _ppm ppm 2>/dev/null || true\n"
+            );
+            let _ = fs::OpenOptions::new()
+                .append(true)
+                .open(&zshrc)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, snippet.as_bytes()));
+        }
+    }
+
+    configured
 }

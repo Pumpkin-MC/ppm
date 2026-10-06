@@ -20,6 +20,14 @@ pub struct InstalledPlugin {
     #[serde(skip)]
     pub modified: Option<SystemTime>,
     pub is_active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_id: Option<String>,
+    #[serde(default)]
+    pub is_managed: bool,
 }
 
 impl InstalledPlugin {
@@ -64,6 +72,7 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
         return Ok(Vec::new());
     }
 
+    let lockfile = super::lockfile::Lockfile::load_from_dir(plugins_dir).ok();
     let mut list = Vec::new();
     let entries = fs::read_dir(plugins_dir).with_context(|| {
         format!(
@@ -90,12 +99,29 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
             let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
             let modified = metadata.and_then(|m| m.modified().ok());
 
+            let (version, author, public_id, is_managed) = if let Some(ref lock) = lockfile
+                && let Some(locked) = lock.find_plugin(&filename)
+            {
+                (
+                    locked.version.clone(),
+                    Some(locked.author.clone()),
+                    Some(locked.public_id.clone()),
+                    true,
+                )
+            } else {
+                (None, None, None, false)
+            };
+
             list.push(InstalledPlugin {
                 filename,
                 path,
                 size_bytes,
                 modified,
                 is_active: is_wasm,
+                version,
+                author,
+                public_id,
+                is_managed,
             });
         }
     }
@@ -147,6 +173,18 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     fs::remove_file(&target_path)
         .with_context(|| format!("Failed to remove plugin file: {}", target_path.display()))?;
 
+    // Also clean up entry from .ppm.lock if present
+    if let Ok(mut lockfile) = super::lockfile::Lockfile::load_from_dir(plugins_dir) {
+        let filename = target_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
+        if lockfile.remove_plugin(trimmed).is_some() || lockfile.remove_plugin(&filename).is_some()
+        {
+            let _ = lockfile.save_to_dir(plugins_dir);
+        }
+    }
+
     Ok(target_path)
 }
 
@@ -187,6 +225,10 @@ mod tests {
             size_bytes: 100,
             modified: None,
             is_active: true,
+            version: None,
+            author: None,
+            public_id: None,
+            is_managed: false,
         };
         assert_eq!(p1.display_name(), "MyPlugin");
 
@@ -196,6 +238,10 @@ mod tests {
             size_bytes: 100,
             modified: None,
             is_active: false,
+            version: None,
+            author: None,
+            public_id: None,
+            is_managed: false,
         };
         assert_eq!(p2.display_name(), "DeactPlugin");
     }

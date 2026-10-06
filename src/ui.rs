@@ -158,26 +158,38 @@ pub fn print_installed_table(plugins: &[InstalledPlugin]) {
         .set_header(vec![
             Cell::new("Plugin File").fg(Color::Yellow),
             Cell::new("Status").fg(Color::Green),
+            Cell::new("Version").fg(Color::Cyan),
+            Cell::new("Author").fg(Color::White),
+            Cell::new("Market ID").fg(Color::DarkGrey),
             Cell::new("Size").fg(Color::Blue),
             Cell::new("Modified").fg(Color::Cyan),
-            Cell::new("Path").fg(Color::DarkGrey),
         ]);
 
     for p in plugins {
         let status = if p.is_active {
-            Cell::new("Active").fg(Color::Green)
+            if p.is_managed {
+                Cell::new("Active").fg(Color::Green)
+            } else {
+                Cell::new("Active (unmanaged)").fg(Color::DarkGreen)
+            }
         } else {
             Cell::new("Deactivated").fg(Color::DarkGrey)
         };
 
+        let ver = p.version.as_deref().unwrap_or("-");
+        let author = p.author.as_deref().unwrap_or("-");
+        let id = p.public_id.as_deref().unwrap_or("-");
+
         table.add_row(vec![
             Cell::new(&p.filename).fg(Color::White),
             status,
+            Cell::new(ver).fg(Color::Cyan),
+            Cell::new(author).fg(Color::White),
+            Cell::new(id).fg(Color::DarkGrey),
             Cell::new(p.formatted_size())
                 .set_alignment(CellAlignment::Right)
                 .fg(Color::Blue),
             Cell::new(p.formatted_modified()).fg(Color::Cyan),
-            Cell::new(p.path.display().to_string()).fg(Color::DarkGrey),
         ]);
     }
 
