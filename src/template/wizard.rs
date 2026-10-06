@@ -26,6 +26,26 @@ pub struct WizardConfig {
 
 /// Run the plugin generation wizard (either interactive TUI or flag-driven).
 pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
+    // Create validator to reuse in each scene
+    // TODO: Optimize for each scene
+    let validator = |input: &str| {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Ok(inquire::validator::Validation::Invalid(
+                "Input content cannot be empty".into(),
+            ));
+        }
+        if !trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Ok(inquire::validator::Validation::Invalid(
+                "Input content must only contain alphanumeric characters, hyphens, and underscores".into(),
+            ));
+        }
+        Ok(inquire::validator::Validation::Valid)
+    };
+
     let name = match config.name {
         Some(n) if !n.trim().is_empty() => n.trim().to_string(),
         _ => {
@@ -34,20 +54,7 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             }
             Text::new("Plugin Name:")
                 .with_default("my-pumpkin-plugin")
-                .with_validator(|input: &str| {
-                    let trimmed = input.trim();
-                    if trimmed.is_empty() {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Plugin name cannot be empty".into(),
-                        ));
-                    }
-                    if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Name must only contain alphanumeric characters, hyphens, and underscores".into(),
-                        ));
-                    }
-                    Ok(inquire::validator::Validation::Valid)
-                })
+                .with_validator(validator)
                 .prompt()
                 .context("Failed to read plugin name")?
         }
@@ -62,6 +69,7 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             } else {
                 Text::new("Author:")
                     .with_default(&default_author)
+                    .with_validator(validator)
                     .prompt()
                     .context("Failed to read author")?
             }
@@ -77,6 +85,7 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             } else {
                 Text::new("Description:")
                     .with_default(&default_desc)
+                    .with_validator(validator)
                     .prompt()
                     .context("Failed to read description")?
             }
