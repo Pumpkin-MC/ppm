@@ -34,7 +34,7 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             }
             Text::new("Plugin Name:")
                 .with_default("my-pumpkin-plugin")
-                                .with_validator(|input: &str| {
+                .with_validator(|input: &str| {
                     let trimmed = input.trim();
                     if trimmed.is_empty() {
                         return Ok(inquire::validator::Validation::Invalid(
