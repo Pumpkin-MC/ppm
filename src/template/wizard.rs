@@ -38,12 +38,12 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
                     let trimmed = input.trim();
                     if trimmed.is_empty() {
                         return Ok(inquire::validator::Validation::Invalid(
-                            "Plugin name cannot be empty".into(),
+                            "Plugin name cannot be empty.".into(),
                         ));
                     }
                     if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
                         return Ok(inquire::validator::Validation::Invalid(
-                            "Name must only contain alphanumeric characters, hyphens, and underscores".into(),
+                            "Name must only contain alphanumeric characters, hyphens, and underscores.".into(),
                         ));
                     }
                     Ok(inquire::validator::Validation::Valid)
@@ -62,6 +62,23 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             } else {
                 Text::new("Author:")
                     .with_default(&default_author)
+                    .with_validator(|input: &str| {
+                        let trimmed = input.trim();
+                        if trimmed.is_empty() {
+                            return Ok(inquire::validator::Validation::Invalid(
+                                "Author name cannot be empty".into(),
+                            ));
+                        }
+                        if trimmed
+                            .chars()
+                            .all(|c| c == '"' || c == '\\' || c.is_control())
+                        {
+                            return Ok(inquire::validator::Validation::Invalid(
+                                "Name must NOT contain any special characters (etc. '\"', '\\' and control).".into(),
+                            ));
+                        }
+                        Ok(inquire::validator::Validation::Valid)
+                    })
                     .prompt()
                     .context("Failed to read author")?
             }
@@ -77,6 +94,20 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
             } else {
                 Text::new("Description:")
                     .with_default(&default_desc)
+                                    .with_validator(|input: &str| {
+                    let trimmed = input.trim();
+                    if trimmed.is_empty() {
+                        return Ok(inquire::validator::Validation::Invalid(
+                            "Description is not empty.".into(),
+                        ));
+                    }
+                    if trimmed.chars().all(|c| c == '"' || c == '\\' || c.is_control()) {
+                        return Ok(inquire::validator::Validation::Invalid(
+                            "Name must NOT contain any special characters (etc. '\"', '\\' and control).".into(),
+                        ));
+                    }
+                    Ok(inquire::validator::Validation::Valid)
+                })
                     .prompt()
                     .context("Failed to read description")?
             }
