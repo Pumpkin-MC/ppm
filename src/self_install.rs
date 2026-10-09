@@ -72,6 +72,11 @@ pub fn ensure_installed_in_path() -> Result<()> {
         return Ok(());
     }
 
+    // Binaries owned by a system package manager (pacman, apt, ...) must not copy themselves
+    if is_package_managed(&current_exe) {
+        return Ok(());
+    }
+
     let target_bin_dir = match get_install_bin_dir() {
         Ok(dir) => dir,
         Err(_) => return Ok(()),
@@ -100,6 +105,24 @@ pub fn ensure_installed_in_path() -> Result<()> {
     install_all_completions();
 
     Ok(())
+}
+
+/// Returns true if the executable lives in a directory managed by the system package manager.
+fn is_package_managed(exe: &Path) -> bool {
+    if cfg!(windows) {
+        return false;
+    }
+    let exe = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
+    [
+        "/usr/bin",
+        "/usr/sbin",
+        "/bin",
+        "/sbin",
+        "/nix/store",
+        "/opt",
+    ]
+    .iter()
+    .any(|dir| exe.starts_with(dir))
 }
 
 /// Explicitly installs the current executable to the specified or default PATH bin directory.

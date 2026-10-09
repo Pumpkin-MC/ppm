@@ -35,7 +35,9 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     // Attempt automatic self-install to user PATH on first run (like cargo/rustup)
-    let _ = self_install::ensure_installed_in_path();
+    if !matches!(cli.command, Commands::Completions(_)) {
+        let _ = self_install::ensure_installed_in_path();
+    }
 
     let plugins_dir = cli.resolved_plugins_dir();
     let client = MarketClient::new(cli.market_url);
@@ -627,6 +629,10 @@ async fn run(cli: Cli) -> Result<()> {
 
         Commands::SelfInstall(args) => {
             self_install::install_self(args.dir.as_deref(), args.force)?;
+        }
+
+        Commands::Completions(args) => {
+            print!("{}", self_install::generate_completion_string(args.shell));
         }
     }
 
