@@ -1,0 +1,154 @@
+name: AUR Publish
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Build and validate the package without pushing to the AUR
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-publish
+  cancel-in-progress: false
+
+env:
+  AUR_KNOWN_HOST: aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN
+  AUR_PACKAGE: ${{ vars.AUR_PACKAGE || 'ppm-bin' }}
+  RELEASE_TAG: nightly
+
+jobs:
+  check:
+    name: Check AUR configuration
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Look for the AUR SSH key
+        id: check
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AUR_SSH_PRIVATE_KEY is not set, skipping AUR publish. Run the 'AUR Setup' workflow to configure it."
+          fi
+
+  publish:
+    name: Publish ${{ vars.AUR_PACKAGE || 'ppm-bin' }}
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve release version
+        id: version
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --force --tags origin
+          COMMIT=$(git rev-parse "$RELEASE_TAG^{commit}")
+          BASE=$(git show "$COMMIT:Cargo.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -n1)
+          COUNT=$(git rev-list --count "$COMMIT")
+          SHORT=$(git rev-parse --short=7 "$COMMIT")
+          PKGVER="${BASE//-/_}.r${COUNT}.g${SHORT}"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "pkgver=$PKGVER" >> "$GITHUB_OUTPUT"
+          echo "Publishing $AUR_PACKAGE $PKGVER from $COMMIT"
+
+      - name: Download release assets
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          mkdir -p assets
+          BASE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          curl -fsSL -o assets/x86_64 "$BASE_URL/ppm-X64-Linux"
+          curl -fsSL -o assets/aarch64 "$BASE_URL/ppm-ARM64-Linux"
+          curl -fsSL -o assets/LICENSE "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$COMMIT/LICENSE"
+
+      - name: Render PKGBUILD
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+          PKGVER: ${{ steps.version.outputs.pkgver }}
+          MAINTAINER: ${{ vars.AUR_MAINTAINER || 'Alexander Medvedev <lilalexmed@proton.me>' }}
+        run: |
+          mkdir -p pkg
+          sed \
+            -e "s|@MAINTAINER@|$MAINTAINER|" \
+            -e "s|@PKGNAME@|$AUR_PACKAGE|" \
+            -e "s|@PKGVER@|$PKGVER|" \
+            -e "s|@REPO@|$GITHUB_REPOSITORY|g" \
+            -e "s|@COMMIT@|$COMMIT|" \
+            -e "s|@TAG@|$RELEASE_TAG|g" \
+            -e "s|@SHA_LICENSE@|$(sha256sum assets/LICENSE | cut -d' ' -f1)|" \
+            -e "s|@SHA_X86_64@|$(sha256sum assets/x86_64 | cut -d' ' -f1)|" \
+            -e "s|@SHA_AARCH64@|$(sha256sum assets/aarch64 | cut -d' ' -f1)|" \
+            .github/aur/PKGBUILD.in > pkg/PKGBUILD
+          cat pkg/PKGBUILD
+
+      - name: Build package and generate .SRCINFO
+        run: |
+          useradd --create-home builder
+          chown -R builder: pkg
+          cd pkg
+          su builder -c "makepkg --cleanbuild --noconfirm"
+          su builder -c "makepkg --printsrcinfo" > .SRCINFO
+          pacman -Qlp ./*.pkg.tar.zst
+          cat .SRCINFO
+
+      - name: Configure SSH
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 /tmp/aur-ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /tmp/aur-ssh/key
+          chmod 600 /tmp/aur-ssh/key
+          # Pinned from the fingerprints published on https://aur.archlinux.org
+          echo "$AUR_KNOWN_HOST" > /tmp/aur-ssh/known_hosts
+
+      - name: Push to the AUR
+        env:
+          PKGVER: ${{ steps.version.outputs.pkgver }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GIT_SSH_COMMAND: ssh -i /tmp/aur-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=/tmp/aur-ssh/known_hosts
+          GIT_AUTHOR_NAME: ${{ vars.AUR_GIT_NAME || 'github-actions[bot]' }}
+          GIT_AUTHOR_EMAIL: ${{ vars.AUR_GIT_EMAIL || 'github-actions[bot]@users.noreply.github.com' }}
+          GIT_COMMITTER_NAME: ${{ vars.AUR_GIT_NAME || 'github-actions[bot]' }}
+          GIT_COMMITTER_EMAIL: ${{ vars.AUR_GIT_EMAIL || 'github-actions[bot]@users.noreply.github.com' }}
+        run: |
+          git clone "https://aur.archlinux.org/$AUR_PACKAGE.git" aur
+          cp pkg/PKGBUILD pkg/.SRCINFO aur/
+          cd aur
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR package is already up to date."
+            exit 0
+          fi
+          git commit -m "Update to $PKGVER" -m "Upstream commit: https://github.com/$GITHUB_REPOSITORY/commit/$COMMIT"
+          if [ "$DRY_RUN" == "true" ]; then
+            echo "Dry run: not pushing."
+            git show --stat HEAD
+            exit 0
+          fi
+          git push "ssh://aur@aur.archlinux.org/$AUR_PACKAGE.git" HEAD:master
+          echo "Published https://aur.archlinux.org/packages/$AUR_PACKAGE ($PKGVER)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf /tmp/aur-ssh

@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -119,3 +122,9 @@ jobs:
           tag_name: nightly
           name: Nightly Build
           body_path: dist/RELEASE.md
+
+  publish_aur:
+    name: Publish to the AUR
+    needs: [publish_release]
+    uses: ./.github/workflows/aur-publish.yml
+    secrets: inherit
