@@ -1,0 +1,96 @@
+name: AUR Setup
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only validate, do not push the package to the AUR
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  AUR_KNOWN_HOST: aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN
+  AUR_PACKAGE: ${{ vars.AUR_PACKAGE || 'ppm-bin' }}
+
+jobs:
+  preflight:
+    name: Preflight checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require repository admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_ACTOR" == "$GITHUB_REPOSITORY_OWNER" ]; then
+            exit 0
+          fi
+          PERMISSION=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq .permission || echo none)
+          if [ "$PERMISSION" != "admin" ]; then
+            echo "::error::Only the repository owner or an admin can run the AUR setup (you have: $PERMISSION)."
+            exit 1
+          fi
+
+      - name: Check AUR_SSH_PRIVATE_KEY
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::error::Repository secret AUR_SSH_PRIVATE_KEY is missing. Add an SSH key to your AUR account and save its private key as this secret."
+            exit 1
+          fi
+          install -d -m 700 /tmp/aur-ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /tmp/aur-ssh/key
+          chmod 600 /tmp/aur-ssh/key
+          if ! ssh-keygen -y -f /tmp/aur-ssh/key > /tmp/aur-ssh/key.pub; then
+            echo "::error::AUR_SSH_PRIVATE_KEY is not a valid passphrase-less private key."
+            exit 1
+          fi
+          echo "Public key to register on the AUR:"
+          cat /tmp/aur-ssh/key.pub
+
+      - name: Authenticate against the AUR
+        run: |
+          # Pinned from the fingerprints published on https://aur.archlinux.org
+          echo "$AUR_KNOWN_HOST" > /tmp/aur-ssh/known_hosts
+          if ! ssh -i /tmp/aur-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=/tmp/aur-ssh/known_hosts \
+              aur@aur.archlinux.org help > /tmp/aur-ssh/help.txt 2>&1; then
+            cat /tmp/aur-ssh/help.txt
+            echo "::error::The AUR rejected the key. Add the public key printed above to your AUR account."
+            exit 1
+          fi
+          echo "AUR accepted the key."
+
+      - name: Check package name
+        run: |
+          INFO=$(curl -fsSL "https://aur.archlinux.org/rpc/v5/info?arg[]=$AUR_PACKAGE")
+          COUNT=$(echo "$INFO" | jq .resultcount)
+          if [ "$COUNT" == "0" ]; then
+            echo "$AUR_PACKAGE does not exist on the AUR yet, it will be created."
+          else
+            MAINTAINER=$(echo "$INFO" | jq -r '.results[0].Maintainer')
+            echo "$AUR_PACKAGE already exists, maintained by $MAINTAINER."
+            echo "Pushing only works if your AUR account is its maintainer or a co-maintainer."
+          fi
+
+      - name: Check nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view nightly --repo "$GITHUB_REPOSITORY" > /dev/null; then
+            echo "::error::No 'nightly' release found. Run the 'Nightly Release' workflow first."
+            exit 1
+          fi
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf /tmp/aur-ssh
+
+  publish:
+    name: Initial publish
+    needs: preflight
+    uses: ./.github/workflows/aur-publish.yml
+    with:
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit

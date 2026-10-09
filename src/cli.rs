@@ -122,6 +122,9 @@ pub enum Commands {
     /// Install ppm into your user/system PATH (~/.local/bin)
     #[command(visible_alias = "setup")]
     SelfInstall(SelfInstallArgs),
+
+    /// Print the shell completion script for the given shell to stdout
+    Completions(CompletionsArgs),
 }
 
 #[derive(Args, Debug)]
@@ -247,6 +250,12 @@ pub struct SelfInstallArgs {
     /// Force overwrite existing binary if already present
     #[arg(short, long)]
     pub force: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct CompletionsArgs {
+    /// Target shell
+    pub shell: clap_complete::Shell,
 }
 
 #[cfg(test)]

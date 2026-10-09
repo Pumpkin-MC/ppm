@@ -12,6 +12,14 @@ It allows server administrators and developers to effortlessly search and downlo
 
 ## Installation
 
+### Arch Linux (AUR)
+
+Prebuilt nightly binaries are published to the AUR as [`ppm-bin`](https://aur.archlinux.org/packages/ppm-bin):
+
+```bash
+paru -S ppm-bin   # or: yay -S ppm-bin
+```
+
 ### From Source
 
 Ensure you have Rust and Cargo installed (edition 2024 compatible, Rust 1.85+):
