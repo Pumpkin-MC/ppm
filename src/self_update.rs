@@ -61,7 +61,8 @@ struct ReleaseAsset {
 
 /// Checks GitHub for a newer ppm build on the given channel and replaces the running executable with it.
 ///
-/// Refuses to touch executables owned by an external package manager unless `break_system_package` is set.
+/// Refuses to replace executables owned by an external package manager unless `break_system_package`
+/// is set. Checking for updates is always allowed.
 pub async fn self_update(
     channel: Channel,
     check_only: bool,
@@ -70,7 +71,11 @@ pub async fn self_update(
 ) -> Result<()> {
     let current_exe = env::current_exe().context("Failed to locate the running ppm executable")?;
 
-    if let Some(manager) = install_source::detect(&current_exe) {
+    let manager = install_source::detect(&current_exe);
+
+    if let Some(manager) = &manager
+        && !check_only
+    {
         if !break_system_package {
             bail!(
                 "ppm at '{}' was installed by {}, so it won't update itself.\n  {}\n  Use '--break-system-package' to replace it anyway (this can confuse your package manager).",
@@ -118,14 +123,28 @@ pub async fn self_update(
     }
 
     if check_only {
-        let command = match channel {
-            Channel::Stable => "ppm self-update",
-            Channel::Nightly => "ppm self-update --nightly",
-        };
-        ui::info(format!(
-            "An update is available. Run '{}' to install it.",
-            command.cyan()
-        ));
+        match &manager {
+            Some(manager) => {
+                let how = match &manager.update_command {
+                    Some(command) => format!("update it with `{command}`"),
+                    None => "update it through your package manager".to_string(),
+                };
+                ui::info(format!(
+                    "A newer release is available on GitHub. ppm was installed by {}, {how} once the new version is packaged.",
+                    manager.describe()
+                ));
+            }
+            None => {
+                let command = match channel {
+                    Channel::Stable => "ppm self-update",
+                    Channel::Nightly => "ppm self-update --nightly",
+                };
+                ui::info(format!(
+                    "An update is available. Run '{}' to install it.",
+                    command.cyan()
+                ));
+            }
+        }
         return Ok(());
     }
 
