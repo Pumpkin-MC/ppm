@@ -20,6 +20,7 @@ use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
+use crate::install_source;
 use crate::installer::download_progress_bar;
 use crate::ui;
 
@@ -59,7 +60,31 @@ struct ReleaseAsset {
 }
 
 /// Checks GitHub for a newer ppm build on the given channel and replaces the running executable with it.
-pub async fn self_update(channel: Channel, check_only: bool, force: bool) -> Result<()> {
+///
+/// Refuses to touch executables owned by an external package manager unless `break_system_package` is set.
+pub async fn self_update(
+    channel: Channel,
+    check_only: bool,
+    force: bool,
+    break_system_package: bool,
+) -> Result<()> {
+    let current_exe = env::current_exe().context("Failed to locate the running ppm executable")?;
+
+    if let Some(manager) = install_source::detect(&current_exe) {
+        if !break_system_package {
+            bail!(
+                "ppm at '{}' was installed by {}, so it won't update itself.\n  {}\n  Use '--break-system-package' to replace it anyway (this can confuse your package manager).",
+                current_exe.display(),
+                manager.describe(),
+                manager.update_hint()
+            );
+        }
+        ui::warn(format!(
+            "ppm was installed by {}, replacing it anyway because of --break-system-package.",
+            manager.describe()
+        ));
+    }
+
     let http = Client::builder()
         .user_agent(format!("ppm/{CURRENT_VERSION} (Pumpkin Package Manager)"))
         .timeout(Duration::from_secs(300))
@@ -116,7 +141,6 @@ pub async fn self_update(channel: Channel, check_only: bool, force: bool) -> Res
             )
         })?;
 
-    let current_exe = env::current_exe().context("Failed to locate the running ppm executable")?;
     let temp_file = tempfile::Builder::new()
         .prefix("ppm-self-update-")
         .tempfile()

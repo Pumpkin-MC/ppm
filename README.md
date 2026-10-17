@@ -49,6 +49,8 @@ ppm self-update --force
 
 The downloaded binary is verified against the SHA-256 checksum reported by GitHub before replacing the running executable.
 
+If `ppm` was installed through a package manager (pacman/AUR, apt, rpm, apk, Homebrew, Nix, Snap, Flatpak, Scoop, Chocolatey, winget or `cargo install`), `self-update` refuses to replace it and tells you to update it through that package manager instead. Pass `--break-system-package` to replace it anyway.
+
 ---
 
 ## Command Reference

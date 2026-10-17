@@ -265,6 +265,10 @@ pub struct SelfUpdateArgs {
     /// Reinstall the latest build even if already up to date
     #[arg(short, long)]
     pub force: bool,
+
+    /// Replace ppm even if it was installed by a package manager (pacman, apt, Homebrew, ...)
+    #[arg(long, alias = "break-system-packages")]
+    pub break_system_package: bool,
 }
 
 #[cfg(test)]

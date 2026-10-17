@@ -6,6 +6,7 @@
 // (at your option) any later version.
 
 mod cli;
+mod install_source;
 mod installer;
 mod market;
 mod self_install;
@@ -636,7 +637,8 @@ async fn run(cli: Cli) -> Result<()> {
             } else {
                 self_update::Channel::Stable
             };
-            self_update::self_update(channel, args.check, args.force).await?;
+            self_update::self_update(channel, args.check, args.force, args.break_system_package)
+                .await?;
         }
     }
 
