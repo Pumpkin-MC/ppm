@@ -29,6 +29,26 @@ cargo build --release
 # Binary available at target/release/ppm
 ```
 
+### Updating ppm
+
+`ppm` can update itself to the latest release published on GitHub:
+
+```bash
+# Update to the latest stable release
+ppm self-update
+
+# Only check whether a newer version is available
+ppm self-update --check
+
+# Switch to (or update) the latest nightly build
+ppm self-update --nightly
+
+# Reinstall the latest build even if already up to date
+ppm self-update --force
+```
+
+The downloaded binary is verified against the SHA-256 checksum reported by GitHub before replacing the running executable.
+
 ---
 
 ## Command Reference
@@ -210,6 +230,7 @@ Completions are automatically placed into:
 | `PUMPKIN_MARKET_URL` | `--market-url <URL>` | `https://market.pumpkinmc.org` | Pumpkin Marketplace API base URL |
 | `PUMPKIN_PLUGINS_DIR` | `--plugins-dir <DIR>` | Auto-detected | Directory where plugins are installed (auto-resolves server root vs plugins dir) |
 | `PPM_TOKEN` | `--token <TOKEN>` | `None` | Authentication token for private/paid plugins |
+| `GITHUB_TOKEN` | - | `None` | Optional GitHub token used by `ppm self-update` to raise the API rate limit |
 
 ---
 
