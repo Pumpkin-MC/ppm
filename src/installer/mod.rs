@@ -72,26 +72,7 @@ pub async fn install_plugin(
 
     let total_size = resp.content_length();
 
-    let pb = if let Some(size) = total_size {
-        let pb = ProgressBar::new(size);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:38.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-                .unwrap()
-                .progress_chars("#>-"),
-        );
-        pb
-    } else {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] {bytes} downloaded ({bytes_per_sec})",
-                )
-                .unwrap(),
-        );
-        pb
-    };
+    let pb = download_progress_bar(total_size);
 
     let temp_path = dest_path.with_extension("tmp.download");
     let mut file = tokio::fs::File::create(&temp_path)
@@ -147,4 +128,28 @@ pub async fn install_plugin(
     }
 
     Ok(outcome)
+}
+
+/// Creates a byte progress bar for a download, or a spinner when the total size is unknown.
+pub fn download_progress_bar(total_size: Option<u64>) -> ProgressBar {
+    if let Some(size) = total_size {
+        let pb = ProgressBar::new(size);
+        pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:38.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+        pb
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] {bytes} downloaded ({bytes_per_sec})",
+                )
+                .unwrap(),
+        );
+        pb
+    }
 }

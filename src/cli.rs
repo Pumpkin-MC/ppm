@@ -122,6 +122,9 @@ pub enum Commands {
     /// Install ppm into your user/system PATH (~/.local/bin)
     #[command(visible_alias = "setup")]
     SelfInstall(SelfInstallArgs),
+
+    /// Update ppm itself to the latest release published on GitHub
+    SelfUpdate(SelfUpdateArgs),
 }
 
 #[derive(Args, Debug)]
@@ -247,6 +250,25 @@ pub struct SelfInstallArgs {
     /// Force overwrite existing binary if already present
     #[arg(short, long)]
     pub force: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct SelfUpdateArgs {
+    /// Update to the latest nightly build instead of the latest stable release
+    #[arg(long)]
+    pub nightly: bool,
+
+    /// Only check whether a newer version is available
+    #[arg(short = 'c', long = "check", conflicts_with = "force")]
+    pub check: bool,
+
+    /// Reinstall the latest build even if already up to date
+    #[arg(short, long)]
+    pub force: bool,
+
+    /// Replace ppm even if it was installed by a package manager (pacman, apt, Homebrew, ...)
+    #[arg(long, alias = "break-system-packages")]
+    pub break_system_package: bool,
 }
 
 #[cfg(test)]

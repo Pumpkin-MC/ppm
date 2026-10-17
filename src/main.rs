@@ -6,9 +6,11 @@
 // (at your option) any later version.
 
 mod cli;
+mod install_source;
 mod installer;
 mod market;
 mod self_install;
+mod self_update;
 mod template;
 mod ui;
 
@@ -627,6 +629,16 @@ async fn run(cli: Cli) -> Result<()> {
 
         Commands::SelfInstall(args) => {
             self_install::install_self(args.dir.as_deref(), args.force)?;
+        }
+
+        Commands::SelfUpdate(args) => {
+            let channel = if args.nightly {
+                self_update::Channel::Nightly
+            } else {
+                self_update::Channel::Stable
+            };
+            self_update::self_update(channel, args.check, args.force, args.break_system_package)
+                .await?;
         }
     }
 

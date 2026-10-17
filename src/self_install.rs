@@ -14,6 +14,7 @@ use clap::CommandFactory;
 use clap_complete::{Shell, generate};
 
 use crate::cli::Cli;
+use crate::install_source;
 use crate::ui;
 
 /// Determines the standard target directory for installing ppm as a normal CLI app (~/.local/bin or /usr/local/bin).
@@ -92,6 +93,11 @@ pub fn ensure_installed_in_path() -> Result<()> {
     // If ppm is already installed at the destination, ensure completions exist
     if target_exe_path.exists() {
         ensure_completions_if_missing();
+        return Ok(());
+    }
+
+    // Leave binaries owned by a package manager where they are
+    if install_source::detect(&current_exe).is_some() {
         return Ok(());
     }
 
