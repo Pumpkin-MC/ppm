@@ -5,7 +5,6 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -23,21 +22,10 @@ fn main() {
     println!("cargo:rustc-env=PPM_GIT_COMMIT={commit}");
     println!("cargo:rerun-if-changed=build.rs");
 
-    let head = Path::new(".git/HEAD");
-    if !head.is_file() {
-        return;
-    }
-
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    if let Ok(content) = fs::read_to_string(head)
-        && let Some(reference) = content.strip_prefix("ref: ")
-    {
-        let ref_path = Path::new(".git").join(reference.trim());
-        if ref_path.is_file() {
-            println!("cargo:rerun-if-changed={}", ref_path.display());
+    // A fresh clone keeps branch refs in packed-refs, so the heads directory is watched too.
+    for path in [".git/HEAD", ".git/packed-refs", ".git/refs/heads"] {
+        if Path::new(path).exists() {
+            println!("cargo:rerun-if-changed={path}");
         }
-    }
-    if Path::new(".git/packed-refs").is_file() {
-        println!("cargo:rerun-if-changed=.git/packed-refs");
     }
 }

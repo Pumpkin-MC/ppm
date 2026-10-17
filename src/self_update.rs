@@ -17,6 +17,7 @@ use reqwest::{Client, RequestBuilder, StatusCode, header};
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
 use crate::installer::download_progress_bar;
@@ -116,11 +117,12 @@ pub async fn self_update(channel: Channel, check_only: bool, force: bool) -> Res
         })?;
 
     let current_exe = env::current_exe().context("Failed to locate the running ppm executable")?;
-    let temp_path = env::temp_dir().join(format!("ppm-self-update-{}", std::process::id()));
+    let temp_file = tempfile::Builder::new()
+        .prefix("ppm-self-update-")
+        .tempfile()
+        .context("Failed to create temporary file")?;
 
-    let result = download_and_replace(&http, asset, &temp_path, &current_exe).await;
-    let _ = fs::remove_file(&temp_path);
-    result?;
+    download_and_replace(&http, asset, &temp_file, &current_exe).await?;
 
     ui::success(format!(
         "Updated ppm to {} at {}",
@@ -134,7 +136,7 @@ pub async fn self_update(channel: Channel, check_only: bool, force: bool) -> Res
 async fn download_and_replace(
     http: &Client,
     asset: &ReleaseAsset,
-    temp_path: &Path,
+    temp_file: &NamedTempFile,
     current_exe: &Path,
 ) -> Result<()> {
     ui::info(format!("Downloading {}...", asset.name.cyan()));
@@ -153,9 +155,13 @@ async fn download_and_replace(
     }
 
     let pb = download_progress_bar(resp.content_length());
-    let mut file = tokio::fs::File::create(temp_path)
-        .await
-        .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))?;
+    let temp_path = temp_file.path();
+    let mut file = tokio::fs::File::from_std(
+        temp_file
+            .as_file()
+            .try_clone()
+            .context("Failed to open temporary file")?,
+    );
     let mut hasher = Sha256::new();
     let mut stream = resp.bytes_stream();
     let mut downloaded: u64 = 0;
@@ -188,9 +194,10 @@ async fn download_and_replace(
                 );
             }
         }
-        None => {
-            ui::warn("GitHub did not report a checksum for this binary, skipping verification.")
-        }
+        None => bail!(
+            "GitHub did not report a SHA-256 checksum for '{}', refusing to install an unverified binary",
+            asset.name
+        ),
     }
 
     #[cfg(unix)]
