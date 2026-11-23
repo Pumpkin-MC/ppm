@@ -319,10 +319,12 @@ impl MarketClient {
                 && let Some(last) = segs.next_back().filter(|s| !s.is_empty())
             {
                 let name = last.split('?').next().unwrap_or(last);
-                if name.ends_with(".wasm") {
-                    return name.to_string();
-                } else {
-                    return format!("{name}.wasm");
+                if let Some(safe) = sanitize_download_filename(name) {
+                    if safe.ends_with(".wasm") {
+                        return safe;
+                    } else {
+                        return format!("{safe}.wasm");
+                    }
                 }
             }
             "plugin.wasm".to_string()
@@ -413,20 +415,33 @@ fn extract_filename(resp: &reqwest::Response) -> Option<String> {
     parse_content_disposition_filename(header_val)
 }
 
+fn sanitize_download_filename(raw: &str) -> Option<String> {
+    // Strip any directory components (`/` or `\`) and reject traversal segments,
+    // control characters, and Windows drive prefixes (such as `C:payload.wasm`).
+    let leaf = raw
+        .rsplit(['/', '\\'])
+        .next()
+        .map(str::trim)
+        .unwrap_or_default();
+    if leaf.is_empty()
+        || leaf == "."
+        || leaf == ".."
+        || leaf.contains(':')
+        || leaf.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(leaf.to_string())
+}
+
 fn parse_content_disposition_filename(header_val: &str) -> Option<String> {
     // Example header: attachment; filename="EpicRTP.wasm"; filename*=UTF-8''EpicRTP.wasm
     for part in header_val.split(';') {
         let part = part.trim();
         if let Some(stripped) = part.strip_prefix("filename=") {
             let clean = stripped.trim_matches('"').trim();
-            // Reject or strip any path separators (`/` or `\`) and traversal segments.
-            let leaf = clean
-                .rsplit(['/', '\\'])
-                .next()
-                .map(str::trim)
-                .unwrap_or_default();
-            if !leaf.is_empty() && leaf != "." && leaf != ".." {
-                return Some(leaf.to_string());
+            if let Some(safe) = sanitize_download_filename(clean) {
+                return Some(safe);
             }
         }
     }
@@ -451,6 +466,14 @@ mod tests {
         assert_eq!(
             parse_content_disposition_filename(r#"attachment; filename="..\\evil.wasm""#),
             Some("evil.wasm".into())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="dir/C:payload.wasm""#),
+            None
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="C:payload.wasm""#),
+            None
         );
         assert_eq!(
             parse_content_disposition_filename(r#"attachment; filename="..""#),

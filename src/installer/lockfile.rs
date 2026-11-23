@@ -149,6 +149,16 @@ impl Lockfile {
         }
     }
 
+    /// Remove the lockfile entry whose recorded disk filename matches `filename`.
+    pub fn remove_by_file(&mut self, filename: &str) -> Option<LockedPlugin> {
+        let trimmed = filename.trim();
+        let key_to_remove = self
+            .plugins
+            .iter()
+            .find_map(|(k, p)| p.file.eq_ignore_ascii_case(trimmed).then(|| k.clone()));
+        key_to_remove.and_then(|key| self.plugins.remove(&key))
+    }
+
     /// Find a plugin by public ID, database ID, name, or filename.
     pub fn find_plugin(&self, query: &str) -> Option<&LockedPlugin> {
         let trimmed = query.trim();

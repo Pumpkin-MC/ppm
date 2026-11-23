@@ -129,6 +129,20 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
     Ok(list)
 }
 
+/// Returns true iff `input` is a single normal filename component on the host
+/// platform (no host path separators, no `.` / `..`, no root dir, and no
+/// Windows drive prefix such as `C:keep.txt`).
+fn is_safe_plugin_filename(input: &str) -> bool {
+    if input.is_empty() || input.chars().any(std::path::is_separator) {
+        return false;
+    }
+    let mut components = Path::new(input).components();
+    matches!(
+        (components.next(), components.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    )
+}
+
 /// Remove a plugin file from the plugins directory.
 pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     if !plugins_dir.exists() {
@@ -139,8 +153,9 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     }
 
     let trimmed = plugin.trim();
-    // Guard against path traversal (`../...`, `/etc/...`) escaping `plugins_dir`.
-    if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains(['/', '\\']) {
+    // Guard against path traversal (`../...`, `/etc/...`, Windows `C:keep.txt`)
+    // while still permitting valid host filenames (e.g. `\` on Unix).
+    if !is_safe_plugin_filename(trimmed) {
         bail!(
             "{}",
             tr!(
@@ -155,12 +170,12 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     let wasm_path = plugins_dir.join(format!("{trimmed}.wasm"));
     let deact_path = plugins_dir.join(format!("{trimmed}.wasm.deactivated"));
 
-    let target_path = if direct_path.exists() && direct_path.is_file() {
-        direct_path
+    let (target_path, selected_public_id) = if direct_path.exists() && direct_path.is_file() {
+        (direct_path, None)
     } else if wasm_path.exists() && wasm_path.is_file() {
-        wasm_path
+        (wasm_path, None)
     } else if deact_path.exists() && deact_path.is_file() {
-        deact_path
+        (deact_path, None)
     } else {
         // Try case-insensitive lookup by filename, display name, or marketplace public_id
         let installed = scan_installed(plugins_dir)?;
@@ -173,7 +188,7 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
         });
 
         match found {
-            Some(p) => p.path,
+            Some(p) => (p.path, p.public_id),
             None => {
                 bail!(
                     "{}",
@@ -190,14 +205,21 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     fs::remove_file(&target_path)
         .with_context(|| tr!("local.remove_failed", path = target_path.display()))?;
 
-    // Also clean up entry from .ppm.lock if present
+    // Clean up the exact deleted plugin's entry from .ppm.lock using its
+    // selected public_id (or exact deleted filename), never re-resolving the
+    // raw query against unrelated plugins' names.
     if let Ok(mut lockfile) = super::lockfile::Lockfile::load_from_dir(plugins_dir) {
-        let filename = target_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        if lockfile.remove_plugin(trimmed).is_some() || lockfile.remove_plugin(&filename).is_some()
-        {
+        let removed_entry = if let Some(ref public_id) = selected_public_id {
+            lockfile.remove_plugin(public_id).is_some()
+        } else {
+            let filename = target_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            lockfile.remove_by_file(&filename).is_some()
+        };
+
+        if removed_entry {
             let _ = lockfile.save_to_dir(plugins_dir);
         }
     }
@@ -308,5 +330,85 @@ mod tests {
         assert!(reloaded.plugins.is_empty());
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_remove_plugin_cleans_exact_lockfile_entry_on_name_id_collision() {
+        let base = std::env::temp_dir().join(format!("ppm-local-coll-{}", std::process::id()));
+        let plugins_dir = base.join("plugins");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&plugins_dir).unwrap();
+
+        let alpha = plugins_dir.join("Alpha.wasm");
+        let zulu = plugins_dir.join("Zulu.wasm");
+        fs::write(&alpha, b"\0asm").unwrap();
+        fs::write(&zulu, b"\0asm").unwrap();
+
+        let mut lock = super::super::lockfile::Lockfile::default();
+        lock.plugins.insert(
+            "S1zisQxa".into(),
+            super::super::lockfile::LockedPlugin {
+                id: 1,
+                public_id: "S1zisQxa".into(),
+                name: "Alpha".into(),
+                author: "Alex".into(),
+                version: Some("1.0.0".into()),
+                file: "Alpha.wasm".into(),
+                updated_at: None,
+            },
+        );
+        lock.plugins.insert(
+            "Other123".into(),
+            super::super::lockfile::LockedPlugin {
+                id: 2,
+                public_id: "Other123".into(),
+                name: "s1zisqxa".into(),
+                author: "Bob".into(),
+                version: Some("1.0.0".into()),
+                file: "Zulu.wasm".into(),
+                updated_at: None,
+            },
+        );
+        lock.save_to_dir(&plugins_dir).unwrap();
+
+        // Lowercase query matches Alpha's public_id first; cleanup must remove
+        // Alpha's lockfile entry and leave Other123 intact.
+        let removed = remove_plugin(&plugins_dir, "s1zisqxa").unwrap();
+        assert_eq!(removed, alpha);
+        assert!(!alpha.exists());
+        assert!(zulu.exists());
+
+        let reloaded = super::super::lockfile::Lockfile::load_from_dir(&plugins_dir).unwrap();
+        assert!(!reloaded.plugins.contains_key("S1zisQxa"));
+        assert!(reloaded.plugins.contains_key("Other123"));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_remove_plugin_allows_unix_backslash_filename() {
+        let base = std::env::temp_dir().join(format!("ppm-local-bs-{}", std::process::id()));
+        let plugins_dir = base.join("plugins");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&plugins_dir).unwrap();
+
+        let weird = plugins_dir.join(r"weird\name.wasm");
+        fs::write(&weird, b"\0asm").unwrap();
+
+        let removed = remove_plugin(&plugins_dir, r"weird\name.wasm").unwrap();
+        assert_eq!(removed, weird);
+        assert!(!weird.exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_is_safe_plugin_filename_rejects_windows_drive_prefix() {
+        assert!(!is_safe_plugin_filename("C:keep.txt"));
+        assert!(!is_safe_plugin_filename(r"C:\keep.txt"));
+        assert!(!is_safe_plugin_filename(r"sub\plugin.wasm"));
+        assert!(is_safe_plugin_filename("plugin.wasm"));
     }
 }

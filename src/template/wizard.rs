@@ -43,12 +43,14 @@ impl fmt::Display for TemplateFeature {
 
 fn validate_plugin_name(input: &str) -> std::result::Result<(), String> {
     let trimmed = input.trim();
-    if trimmed.is_empty() {
+    let mut chars = trimmed.chars();
+    let Some(first) = chars.next() else {
         return Err(tr!("wizard.name_empty"));
-    }
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    };
+    // Package manifests (Cargo) and generated type identifiers require a
+    // leading letter or underscore rather than a digit or hyphen.
+    if !(first.is_alphabetic() || first == '_')
+        || !chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {
         return Err(tr!("wizard.name_invalid"));
     }
@@ -106,6 +108,9 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
         }
         _ => {
             if config.non_interactive {
+                if let Err(msg) = validate_metadata_text(&default_author, "wizard.author_empty") {
+                    bail!("{msg}");
+                }
                 default_author
             } else {
                 let prompt_author = tr!("wizard.prompt_author");
@@ -271,7 +276,11 @@ mod tests {
     #[test]
     fn test_validate_plugin_name() {
         assert!(validate_plugin_name("my-plugin_1").is_ok());
+        assert!(validate_plugin_name("_internal_plugin").is_ok());
+        assert!(validate_plugin_name("测试插件").is_ok());
         assert!(validate_plugin_name("  ").is_err());
+        assert!(validate_plugin_name("123plugin").is_err());
+        assert!(validate_plugin_name("-plugin").is_err());
         assert!(validate_plugin_name("../evil").is_err());
         assert!(validate_plugin_name("bad/name").is_err());
         assert!(validate_plugin_name("has space").is_err());

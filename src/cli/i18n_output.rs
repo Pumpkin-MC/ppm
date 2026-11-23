@@ -354,9 +354,53 @@ fn append_suggestions(
         for tip in tips {
             out.push_str(if had_tip { "\n" } else { "\n\n" });
             had_tip = true;
-            let _ = write!(out, "  {tip_prefix}{}", styled_text(tip, styled));
+            let localized = localize_suggested_tip(tip, styles, styled);
+            let _ = write!(out, "  {tip_prefix}{localized}");
         }
     }
+}
+
+/// Translates clap's built-in `ContextKind::Suggested` recovery instructions
+/// while preserving their argument/command syntax and ANSI styles.
+fn localize_suggested_tip(tip: &StyledStr, styles: &Styles, styled: bool) -> String {
+    let plain = tip.to_string();
+    let invalid = styles.get_invalid();
+    let valid = styles.get_valid();
+
+    // `to pass '<arg>' as a value, use '-- <arg>'`
+    if let Some(rest) = plain.strip_prefix("to pass '")
+        && let Some((arg, cmd_rest)) = rest.split_once("' as a value, use '")
+        && let Some(cmd) = cmd_rest.strip_suffix('\'')
+    {
+        return tr!(
+            "clap.tip.pass_as_value",
+            arg = paint(invalid, arg, styled),
+            cmd = paint(valid, cmd, styled)
+        );
+    }
+
+    // `subcommand '<subcmd>' exists; to use it, remove the '--' before it`
+    if let Some(rest) = plain.strip_prefix("subcommand '")
+        && let Some(sub) = rest.strip_suffix("' exists; to use it, remove the '--' before it")
+    {
+        return tr!(
+            "clap.tip.remove_double_dash",
+            sub = paint(valid, sub, styled),
+            dash = paint(invalid, "--", styled)
+        );
+    }
+
+    // `'<subcmd> <flag>' exists`
+    if let Some(rest) = plain.strip_prefix('\'')
+        && let Some(cmd) = rest.strip_suffix("' exists")
+    {
+        return tr!(
+            "clap.tip.subcommand_flag_exists",
+            cmd = paint(valid, cmd, styled)
+        );
+    }
+
+    styled_text(tip, styled)
 }
 
 /// Builds the localized explanation for a parse failure.
@@ -674,6 +718,38 @@ mod tests {
                 rendered.contains(tip.trim_end()) && rendered.contains("'--locale'"),
                 "{locale}: expected localized argument suggestion, got:\n{rendered}"
             );
+
+            // Recovery instruction from `ContextKind::Suggested` (`to pass ... as a value, use '-- ...'`).
+            let (error, cmd) = first_error(&["ppm", "search", "--bogus"]);
+            let rendered = render(&error, &cmd, false);
+            assert!(
+                rendered.contains(tip.trim_end())
+                    && rendered.contains("'--bogus'")
+                    && rendered.contains("'-- --bogus'"),
+                "{locale}: expected recovery suggestion preserving syntax, got:\n{rendered}"
+            );
+            if locale != "en_US" {
+                assert!(
+                    !rendered.contains("to pass '--bogus' as a value"),
+                    "{locale}: recovery instruction remained English:\n{rendered}"
+                );
+            }
+
+            // Recovery instruction from `unnecessary_double_dash` (`ppm -- search`).
+            let (error, cmd) = first_error(&["ppm", "--", "search"]);
+            let rendered = render(&error, &cmd, false);
+            assert!(
+                rendered.contains(tip.trim_end())
+                    && rendered.contains("'search'")
+                    && rendered.contains("'--'"),
+                "{locale}: expected double-dash recovery suggestion, got:\n{rendered}"
+            );
+            if locale != "en_US" {
+                assert!(
+                    !rendered.contains("remove the '--' before it"),
+                    "{locale}: double-dash instruction remained English:\n{rendered}"
+                );
+            }
         });
     }
 
