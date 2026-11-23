@@ -5,12 +5,11 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     // pyproject.toml
@@ -34,7 +33,7 @@ dependencies = [
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("pyproject.toml"), pyproject).context("Failed to write pyproject.toml")?;
+    write_file(&dir.join("pyproject.toml"), "pyproject.toml", pyproject)?;
 
     // .gitignore
     let gitignore = r#"__pycache__/
@@ -45,7 +44,7 @@ build/
 *.wasm
 .venv/
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // plugin.py
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -139,7 +138,7 @@ register_plugin({struct_name})
         methods = methods
     );
 
-    fs::write(dir.join("plugin.py"), plugin_py).context("Failed to write plugin.py")?;
+    write_file(&dir.join("plugin.py"), "plugin.py", plugin_py)?;
 
     // README.md
     let readme = format!(
@@ -164,7 +163,7 @@ A Python plugin for the Pumpkin Minecraft Server.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

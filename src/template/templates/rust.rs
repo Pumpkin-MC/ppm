@@ -8,9 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     fs::create_dir_all(dir.join("src"))?;
@@ -36,21 +36,24 @@ tracing = "0.1"
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("Cargo.toml"), cargo_toml).context("Failed to write Cargo.toml")?;
+    write_file(&dir.join("Cargo.toml"), "Cargo.toml", cargo_toml)?;
 
     // .cargo/config.toml
     let cargo_config = r#"[build]
 target = "wasm32-wasip2"
 "#;
-    fs::write(dir.join(".cargo/config.toml"), cargo_config)
-        .context("Failed to write .cargo/config.toml")?;
+    write_file(
+        &dir.join(".cargo/config.toml"),
+        ".cargo/config.toml",
+        cargo_config,
+    )?;
 
     // .gitignore
     let gitignore = r#"/target
 **/*.rs.bk
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // src/lib.rs
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -205,7 +208,7 @@ register_plugin!({struct_name});
         on_load_body = on_load_body
     );
 
-    fs::write(dir.join("src/lib.rs"), lib_rs).context("Failed to write src/lib.rs")?;
+    write_file(&dir.join("src/lib.rs"), "src/lib.rs", lib_rs)?;
 
     // README.md
     let readme = format!(
@@ -253,7 +256,7 @@ ppm installed
         desc = ctx.description,
         name_underscores = ctx.name.replace('-', "_")
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

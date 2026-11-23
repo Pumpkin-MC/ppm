@@ -10,10 +10,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::CommandFactory;
 use clap_complete::{Shell, generate};
 
-use crate::cli::Cli;
+use crate::cli;
+use crate::tr;
 use crate::ui;
 
 /// Determines the standard target directory for installing ppm as a normal CLI app (~/.local/bin or /usr/local/bin).
@@ -46,7 +46,7 @@ pub fn get_install_bin_dir() -> Result<PathBuf> {
         }
     }
 
-    bail!("Could not determine user home directory to install ppm.")
+    bail!("{}", tr!("self_install.no_home_dir"))
 }
 
 /// Automatically install ppm on first run if it is not already in PATH.
@@ -103,8 +103,8 @@ pub fn ensure_installed_in_path() -> Result<()> {
 }
 
 /// Explicitly installs the current executable to the specified or default PATH bin directory.
-pub fn install_self(custom_dir: Option<&Path>, force: bool) -> Result<PathBuf> {
-    let current_exe = env::current_exe().context("Failed to get current executable path")?;
+pub fn install_self(custom_dir: Option<&Path>, _force: bool) -> Result<PathBuf> {
+    let current_exe = env::current_exe().with_context(|| tr!("self_install.get_exe_failed"))?;
 
     let target_bin_dir = match custom_dir {
         Some(d) => d.to_path_buf(),
@@ -114,20 +114,21 @@ pub fn install_self(custom_dir: Option<&Path>, force: bool) -> Result<PathBuf> {
     let target_exe_name = if cfg!(windows) { "ppm.exe" } else { "ppm" };
     let target_exe_path = target_bin_dir.join(target_exe_name);
 
+    // Never copy the running executable onto itself (would fail with ETXTBSY or
+    // truncate the binary even when `--force` is passed); still refresh completions.
     if target_exe_path.exists()
-        && !force
         && let (Ok(c1), Ok(c2)) = (current_exe.canonicalize(), target_exe_path.canonicalize())
         && c1 == c2
     {
-        ui::info(format!(
-            "ppm is already running from the installed location: {}",
-            target_exe_path.display()
+        ui::info(tr!(
+            "self_install.already_installed",
+            path = target_exe_path.display()
         ));
         let shells = install_all_completions();
         if !shells.is_empty() {
-            ui::success(format!(
-                "Configured shell completions for: {}",
-                shells.join(", ")
+            ui::success(tr!(
+                "self_install.completions_configured",
+                shells = shells.join(", ")
             ));
         }
         return Ok(target_exe_path);
@@ -137,9 +138,9 @@ pub fn install_self(custom_dir: Option<&Path>, force: bool) -> Result<PathBuf> {
 
     let shells = install_all_completions();
     if !shells.is_empty() {
-        ui::success(format!(
-            "Configured shell completions for: {}",
-            shells.join(", ")
+        ui::success(tr!(
+            "self_install.completions_configured",
+            shells = shells.join(", ")
         ));
     }
 
@@ -149,45 +150,60 @@ pub fn install_self(custom_dir: Option<&Path>, force: bool) -> Result<PathBuf> {
 fn install_to(current_exe: &Path, target_exe_path: &Path, target_bin_dir: &Path) -> Result<()> {
     if !target_bin_dir.exists() {
         fs::create_dir_all(target_bin_dir).with_context(|| {
-            format!(
-                "Failed to create bin directory: {}",
-                target_bin_dir.display()
+            tr!(
+                "self_install.create_dir_failed",
+                path = target_bin_dir.display()
             )
         })?;
     }
 
-    // Copy executable
-    fs::copy(current_exe, target_exe_path).with_context(|| {
-        format!(
-            "Failed to copy ppm executable to '{}'",
-            target_exe_path.display()
-        )
-    })?;
+    // Stage via a sibling temp file and rename so replacing a running binary
+    // succeeds atomically on Unix instead of failing with ETXTBSY.
+    let temp_path = target_bin_dir.join(format!(".ppm.install.{}.tmp", std::process::id()));
+    if let Err(err) = fs::copy(current_exe, &temp_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(err)
+            .with_context(|| tr!("self_install.copy_failed", path = target_exe_path.display()));
+    }
 
-    // Make executable on Unix
+    // Make executable on Unix before moving into place
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = fs::metadata(target_exe_path) {
+        if let Ok(metadata) = fs::metadata(&temp_path) {
             let mut perms = metadata.permissions();
             perms.set_mode(0o755);
-            let _ = fs::set_permissions(target_exe_path, perms);
+            let _ = fs::set_permissions(&temp_path, perms);
         }
+    }
+
+    #[cfg(windows)]
+    if target_exe_path.exists() {
+        let _ = fs::remove_file(target_exe_path);
+    }
+
+    if let Err(err) = fs::rename(&temp_path, target_exe_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(err)
+            .with_context(|| tr!("self_install.copy_failed", path = target_exe_path.display()));
     }
 
     let path_var = env::var("PATH").unwrap_or_default();
     let is_on_path = env::split_paths(&path_var).any(|p| p == target_bin_dir);
 
     if is_on_path {
-        ui::success(format!(
-            "Installed ppm to {} (now available globally in your PATH)!",
-            target_exe_path.display()
+        ui::success(tr!(
+            "self_install.installed_on_path",
+            path = target_exe_path.display()
         ));
     } else {
-        ui::success(format!("Installed ppm to {}", target_exe_path.display()));
-        ui::warn(format!(
-            "Note: '{}' is not currently in your PATH. Please add it to your shell profile (~/.bashrc or ~/.zshrc):",
-            target_bin_dir.display()
+        ui::success(tr!(
+            "self_install.installed",
+            path = target_exe_path.display()
+        ));
+        ui::warn(tr!(
+            "self_install.not_on_path",
+            dir = target_bin_dir.display()
         ));
         println!("  export PATH=\"{}:$PATH\"", target_bin_dir.display());
     }
@@ -198,7 +214,7 @@ fn install_to(current_exe: &Path, target_exe_path: &Path, target_bin_dir: &Path)
 /// Generates shell completion script string for the given shell.
 pub fn generate_completion_string(shell: Shell) -> String {
     let mut buf = Vec::new();
-    let mut cmd = Cli::command();
+    let mut cmd = cli::localized_command();
     generate(shell, &mut cmd, "ppm", &mut buf);
     String::from_utf8(buf).unwrap_or_default()
 }
@@ -267,11 +283,11 @@ pub fn install_all_completions() -> Vec<String> {
     }
 
     // 3. Zsh
+    let zsh_script = generate_completion_string(Shell::Zsh);
     let zfunc_dir = home.join(".zfunc");
     if fs::create_dir_all(&zfunc_dir).is_ok() {
         let zsh_file = zfunc_dir.join("_ppm");
-        let script = generate_completion_string(Shell::Zsh);
-        if fs::write(&zsh_file, script).is_ok() {
+        if fs::write(&zsh_file, &zsh_script).is_ok() {
             configured.push("Zsh".to_string());
         }
     }
@@ -279,8 +295,7 @@ pub fn install_all_completions() -> Vec<String> {
     let zsh_site_dir = home.join(".local/share/zsh/site-functions");
     if fs::create_dir_all(&zsh_site_dir).is_ok() {
         let zsh_site_file = zsh_site_dir.join("_ppm");
-        let script = generate_completion_string(Shell::Zsh);
-        let _ = fs::write(&zsh_site_file, script);
+        let _ = fs::write(&zsh_site_file, &zsh_script);
     }
 
     // Ensure ~/.zshrc includes the completion

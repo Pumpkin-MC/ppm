@@ -5,6 +5,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -14,6 +15,7 @@ use inquire::{Confirm, MultiSelect, Select, Text};
 
 use super::languages::PluginLanguage;
 use super::templates::{self, TemplateContext};
+use crate::tr;
 
 pub struct WizardConfig {
     pub name: Option<String>,
@@ -24,92 +26,135 @@ pub struct WizardConfig {
     pub non_interactive: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemplateFeature {
+    Command,
+    Event,
+}
+
+impl fmt::Display for TemplateFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Command => write!(f, "{}", tr!("wizard.feature_command")),
+            Self::Event => write!(f, "{}", tr!("wizard.feature_event")),
+        }
+    }
+}
+
+fn validate_plugin_name(input: &str) -> std::result::Result<(), String> {
+    let trimmed = input.trim();
+    let mut chars = trimmed.chars();
+    let Some(first) = chars.next() else {
+        return Err(tr!("wizard.name_empty"));
+    };
+    // Package manifests (Cargo) and generated type identifiers require a
+    // leading letter or underscore rather than a digit or hyphen.
+    if !(first.is_alphabetic() || first == '_')
+        || !chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(tr!("wizard.name_invalid"));
+    }
+    Ok(())
+}
+
+fn validate_metadata_text(input: &str, empty_key: &str) -> std::result::Result<(), String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(crate::i18n::t(empty_key));
+    }
+    if trimmed
+        .chars()
+        .any(|c| c == '"' || c == '\\' || c.is_control())
+    {
+        return Err(tr!("wizard.special_chars_invalid"));
+    }
+    Ok(())
+}
+
 /// Run the plugin generation wizard (either interactive TUI or flag-driven).
 pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
     let name = match config.name {
-        Some(n) if !n.trim().is_empty() => n.trim().to_string(),
+        Some(n) if !n.trim().is_empty() => {
+            if let Err(msg) = validate_plugin_name(&n) {
+                bail!("{msg}");
+            }
+            n.trim().to_string()
+        }
         _ => {
             if config.non_interactive {
-                bail!("Plugin name is required in non-interactive mode. Usage: ppm new <NAME>");
+                bail!("{}", tr!("wizard.name_required"));
             }
-            Text::new("Plugin Name:")
+            let prompt_name = tr!("wizard.prompt_name");
+            Text::new(&prompt_name)
                 .with_default("my-pumpkin-plugin")
-                .with_validator(|input: &str| {
-                    let trimmed = input.trim();
-                    if trimmed.is_empty() {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Plugin name cannot be empty.".into(),
-                        ));
-                    }
-                    if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Name must only contain alphanumeric characters, hyphens, and underscores.".into(),
-                        ));
-                    }
-                    Ok(inquire::validator::Validation::Valid)
+                .with_validator(|input: &str| match validate_plugin_name(input) {
+                    Ok(()) => Ok(inquire::validator::Validation::Valid),
+                    Err(msg) => Ok(inquire::validator::Validation::Invalid(msg.into())),
                 })
                 .prompt()
-                .context("Failed to read plugin name")?
+                .with_context(|| tr!("wizard.read_name_failed"))?
+                .trim()
+                .to_string()
         }
     };
 
     let default_author = get_default_author();
     let author = match config.author {
-        Some(a) if !a.trim().is_empty() => a.trim().to_string(),
+        Some(a) if !a.trim().is_empty() => {
+            if let Err(msg) = validate_metadata_text(&a, "wizard.author_empty") {
+                bail!("{msg}");
+            }
+            a.trim().to_string()
+        }
         _ => {
             if config.non_interactive {
+                if let Err(msg) = validate_metadata_text(&default_author, "wizard.author_empty") {
+                    bail!("{msg}");
+                }
                 default_author
             } else {
-                Text::new("Author:")
+                let prompt_author = tr!("wizard.prompt_author");
+                Text::new(&prompt_author)
                     .with_default(&default_author)
                     .with_validator(|input: &str| {
-                        let trimmed = input.trim();
-                        if trimmed.is_empty() {
-                            return Ok(inquire::validator::Validation::Invalid(
-                                "Author name cannot be empty".into(),
-                            ));
+                        match validate_metadata_text(input, "wizard.author_empty") {
+                            Ok(()) => Ok(inquire::validator::Validation::Valid),
+                            Err(msg) => Ok(inquire::validator::Validation::Invalid(msg.into())),
                         }
-                        if trimmed
-                            .chars()
-                            .all(|c| c == '"' || c == '\\' || c.is_control())
-                        {
-                            return Ok(inquire::validator::Validation::Invalid(
-                                "Name must NOT contain any special characters (etc. '\"', '\\' and control).".into(),
-                            ));
-                        }
-                        Ok(inquire::validator::Validation::Valid)
                     })
                     .prompt()
-                    .context("Failed to read author")?
+                    .with_context(|| tr!("wizard.read_author_failed"))?
+                    .trim()
+                    .to_string()
             }
         }
     };
 
-    let default_desc = "A Pumpkin server plugin".to_string();
+    let default_desc = tr!("wizard.default_description");
     let description = match config.description {
-        Some(d) if !d.trim().is_empty() => d.trim().to_string(),
+        Some(d) if !d.trim().is_empty() => {
+            if let Err(msg) = validate_metadata_text(&d, "wizard.description_empty") {
+                bail!("{msg}");
+            }
+            d.trim().to_string()
+        }
         _ => {
             if config.non_interactive {
                 default_desc
             } else {
-                Text::new("Description:")
+                let prompt_desc = tr!("wizard.prompt_description");
+                Text::new(&prompt_desc)
                     .with_default(&default_desc)
-                                    .with_validator(|input: &str| {
-                    let trimmed = input.trim();
-                    if trimmed.is_empty() {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Description is not empty.".into(),
-                        ));
-                    }
-                    if trimmed.chars().all(|c| c == '"' || c == '\\' || c.is_control()) {
-                        return Ok(inquire::validator::Validation::Invalid(
-                            "Name must NOT contain any special characters (etc. '\"', '\\' and control).".into(),
-                        ));
-                    }
-                    Ok(inquire::validator::Validation::Valid)
-                })
+                    .with_validator(|input: &str| {
+                        match validate_metadata_text(input, "wizard.description_empty") {
+                            Ok(()) => Ok(inquire::validator::Validation::Valid),
+                            Err(msg) => Ok(inquire::validator::Validation::Invalid(msg.into())),
+                        }
+                    })
                     .prompt()
-                    .context("Failed to read description")?
+                    .with_context(|| tr!("wizard.read_description_failed"))?
+                    .trim()
+                    .to_string()
             }
         }
     };
@@ -121,9 +166,10 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
                 PluginLanguage::Rust
             } else {
                 let options = PluginLanguage::ALL.to_vec();
-                Select::new("Select programming language:", options)
+                let prompt_lang = tr!("wizard.prompt_language");
+                Select::new(&prompt_lang, options)
                     .prompt()
-                    .context("Failed to select language")?
+                    .with_context(|| tr!("wizard.select_language_failed"))?
             }
         }
     };
@@ -131,18 +177,16 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
     let (include_command, include_event) = if config.non_interactive {
         (true, true)
     } else {
-        let features = vec![
-            "Sample custom command handler",
-            "Sample player join event listener",
-        ];
-        let selected = MultiSelect::new("Select template features to include:", features)
+        let features = vec![TemplateFeature::Command, TemplateFeature::Event];
+        let prompt_features = tr!("wizard.prompt_features");
+        let selected = MultiSelect::new(&prompt_features, features)
             .with_default(&[0, 1])
             .prompt()
-            .unwrap_or_else(|_| vec![]);
+            .unwrap_or_default();
 
         (
-            selected.iter().any(|s| s.contains("command")),
-            selected.iter().any(|s| s.contains("join")),
+            selected.contains(&TemplateFeature::Command),
+            selected.contains(&TemplateFeature::Event),
         )
     };
 
@@ -159,26 +203,24 @@ pub fn run_wizard(config: WizardConfig) -> Result<PathBuf> {
         if !is_empty {
             if config.non_interactive {
                 bail!(
-                    "Target directory '{}' already exists and is not empty.",
-                    target_dir.display()
+                    "{}",
+                    tr!("wizard.dir_not_empty_error", path = target_dir.display())
                 );
             }
 
-            let proceed = Confirm::new(&format!(
-                "Directory '{}' is not empty. Continue and possibly overwrite files?",
-                target_dir.display()
-            ))
-            .with_default(false)
-            .prompt()
-            .context("Prompt failed")?;
+            let confirm_msg = tr!("wizard.dir_not_empty_confirm", path = target_dir.display());
+            let proceed = Confirm::new(&confirm_msg)
+                .with_default(false)
+                .prompt()
+                .with_context(|| tr!("wizard.prompt_failed"))?;
 
             if !proceed {
-                bail!("Plugin creation cancelled by user.");
+                bail!("{}", tr!("wizard.cancelled"));
             }
         }
     } else {
         fs::create_dir_all(&target_dir)
-            .with_context(|| format!("Failed to create directory '{}'", target_dir.display()))?;
+            .with_context(|| tr!("wizard.create_dir_failed", path = target_dir.display()))?;
     }
 
     let ctx = TemplateContext {
@@ -225,4 +267,31 @@ fn get_default_author() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "Pumpkin Developer".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_plugin_name() {
+        assert!(validate_plugin_name("my-plugin_1").is_ok());
+        assert!(validate_plugin_name("_internal_plugin").is_ok());
+        assert!(validate_plugin_name("测试插件").is_ok());
+        assert!(validate_plugin_name("  ").is_err());
+        assert!(validate_plugin_name("123plugin").is_err());
+        assert!(validate_plugin_name("-plugin").is_err());
+        assert!(validate_plugin_name("../evil").is_err());
+        assert!(validate_plugin_name("bad/name").is_err());
+        assert!(validate_plugin_name("has space").is_err());
+    }
+
+    #[test]
+    fn test_validate_metadata_text_rejects_embedded_quotes_and_escapes() {
+        assert!(validate_metadata_text("Normal Author", "wizard.author_empty").is_ok());
+        assert!(validate_metadata_text("  ", "wizard.author_empty").is_err());
+        assert!(validate_metadata_text("Evil\"Author", "wizard.author_empty").is_err());
+        assert!(validate_metadata_text("Back\\slash", "wizard.description_empty").is_err());
+        assert!(validate_metadata_text("Line\nbreak", "wizard.description_empty").is_err());
+    }
 }

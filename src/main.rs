@@ -6,6 +6,7 @@
 // (at your option) any later version.
 
 mod cli;
+mod i18n;
 mod installer;
 mod market;
 mod self_install;
@@ -15,7 +16,6 @@ mod ui;
 use std::str::FromStr;
 
 use anyhow::{Result, bail};
-use clap::Parser;
 use colored::Colorize;
 use inquire::Confirm;
 
@@ -25,7 +25,11 @@ use template::{PluginLanguage, WizardConfig};
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
+    // The locale is initialized before clap parses so that `--help` is localized too.
+    let scanned_locale = cli::extract_locale_from_args(std::env::args_os());
+    i18n::init(scanned_locale.as_deref());
+
+    let cli = Cli::parse_localized();
 
     if let Err(err) = run(cli).await {
         ui::error(format!("{err:#}"));
@@ -78,30 +82,31 @@ async fn run(cli: Cli) -> Result<()> {
             if args.plugins.is_empty() {
                 let lockfile = installer::Lockfile::load_from_dir(&plugins_dir)?;
                 if lockfile.plugins.is_empty() {
-                    ui::warn(format!(
-                        "No plugins specified and no marketplace plugins found in '{}'.",
-                        installer::Lockfile::locate(&plugins_dir).display()
+                    ui::warn(tr!(
+                        "install.no_plugins_no_lock",
+                        path = installer::Lockfile::locate(&plugins_dir).display()
                     ));
-                    println!("  Usage: ppm install <PLUGINS>...");
+                    println!("{}", tr!("install.usage"));
                     return Ok(());
                 }
 
-                ui::info(format!(
-                    "Found .ppm.lock with {} marketplace plugin(s). Restoring...",
-                    lockfile.plugins.len()
+                ui::info(tr!(
+                    "install.lockfile_found",
+                    count = lockfile.plugins.len()
                 ));
 
                 let mut installed_count = 0;
                 let mut failed = Vec::new();
                 let total = lockfile.plugins.len();
+                let latest_label = tr!("common.latest");
 
                 for (public_id, locked) in &lockfile.plugins {
-                    let ver_display = locked.version.as_deref().unwrap_or("latest");
-                    ui::info(format!(
-                        "Restoring '{}' (v{}, ID: {}) from marketplace...",
-                        locked.name.cyan(),
-                        ver_display.bright_green(),
-                        public_id.dimmed()
+                    let ver_display = locked.version.as_deref().unwrap_or(latest_label.as_str());
+                    ui::info(tr!(
+                        "install.restoring",
+                        name = locked.name.cyan(),
+                        version = ver_display.bright_green(),
+                        id = public_id.dimmed()
                     ));
 
                     match installer::install_plugin(
@@ -117,7 +122,7 @@ async fn run(cli: Cli) -> Result<()> {
                         Ok(outcome) => {
                             let file_size = std::fs::metadata(&outcome.path)
                                 .map(|m| installer::format_size(m.len()))
-                                .unwrap_or_else(|_| "unknown size".into());
+                                .unwrap_or_else(|_| tr!("common.unknown_size"));
 
                             let version_str = outcome
                                 .metadata
@@ -126,16 +131,16 @@ async fn run(cli: Cli) -> Result<()> {
                                 .map(|v| format!(" v{v}"))
                                 .unwrap_or_default();
 
-                            ui::success(format!(
-                                "Restored '{}{}' ({})",
-                                outcome.display_name.bright_green(),
-                                version_str.bright_cyan(),
-                                file_size.bright_blue()
+                            ui::success(tr!(
+                                "install.restored",
+                                name = outcome.display_name.bright_green(),
+                                version = version_str.bright_cyan(),
+                                size = file_size.bright_blue()
                             ));
                             installed_count += 1;
                         }
                         Err(e) => {
-                            ui::error(format!("Failed to restore '{}': {e}", locked.name));
+                            ui::error(tr!("install.restore_failed", name = locked.name, error = e));
                             failed.push((locked.name.clone(), e.to_string()));
                         }
                     }
@@ -143,22 +148,24 @@ async fn run(cli: Cli) -> Result<()> {
 
                 println!();
                 if failed.is_empty() {
-                    ui::success(format!(
-                        "Successfully restored all {installed_count}/{total} plugin(s) from .ppm.lock."
+                    ui::success(tr!(
+                        "install.restore_all_success",
+                        installed = installed_count,
+                        total = total
                     ));
                 } else {
-                    ui::warn(format!(
-                        "Restoration finished with issues: {installed_count}/{total} succeeded, {} failed.",
-                        failed.len()
+                    ui::warn(tr!(
+                        "install.restore_with_issues",
+                        installed = installed_count,
+                        total = total,
+                        failed = failed.len()
                     ));
                 }
                 return Ok(());
             }
 
             if args.plugins.len() > 1 && args.output.is_some() {
-                bail!(
-                    "The '--output' / '-o' option can only be used when installing a single plugin."
-                );
+                bail!("{}", tr!("install.output_single_only"));
             }
 
             let mut installed_count = 0;
@@ -167,11 +174,13 @@ async fn run(cli: Cli) -> Result<()> {
 
             for plugin_req in &args.plugins {
                 let target_desc = match market::parse_plugin_input(plugin_req) {
-                    market::PluginTarget::DirectUrl(ref url) => format!("URL '{}'", url.cyan()),
+                    market::PluginTarget::DirectUrl(ref url) => {
+                        tr!("install.target_url", url = url.cyan())
+                    }
                     market::PluginTarget::Marketplace(ref id) => format!("'{}'", id.cyan()),
                 };
 
-                ui::info(format!("Fetching and installing {target_desc}..."));
+                ui::info(tr!("install.fetching", target = target_desc));
 
                 match installer::install_plugin(
                     &client,
@@ -186,7 +195,7 @@ async fn run(cli: Cli) -> Result<()> {
                     Ok(outcome) => {
                         let file_size = std::fs::metadata(&outcome.path)
                             .map(|m| installer::format_size(m.len()))
-                            .unwrap_or_else(|_| "unknown size".into());
+                            .unwrap_or_else(|_| tr!("common.unknown_size"));
 
                         let version_str = outcome
                             .metadata
@@ -195,17 +204,17 @@ async fn run(cli: Cli) -> Result<()> {
                             .map(|v| format!(" v{v}"))
                             .unwrap_or_default();
 
-                        ui::success(format!(
-                            "Successfully installed '{}{}' ({}) to {}",
-                            outcome.display_name.bright_green().bold(),
-                            version_str.bright_cyan(),
-                            file_size.bright_blue(),
-                            outcome.path.display().to_string().cyan()
+                        ui::success(tr!(
+                            "install.success",
+                            name = outcome.display_name.bright_green().bold(),
+                            version = version_str.bright_cyan(),
+                            size = file_size.bright_blue(),
+                            path = outcome.path.display().to_string().cyan()
                         ));
                         installed_count += 1;
                     }
                     Err(e) => {
-                        ui::error(format!("Failed to install '{plugin_req}': {e}"));
+                        ui::error(tr!("install.failed_detail", plugin = plugin_req, error = e));
                         failed.push((plugin_req.clone(), e.to_string()));
                     }
                 }
@@ -214,27 +223,27 @@ async fn run(cli: Cli) -> Result<()> {
             if total > 1 {
                 println!();
                 if failed.is_empty() {
-                    ui::success(format!(
-                        "Batch installation complete! {installed_count}/{total} plugin(s) installed."
+                    ui::success(tr!(
+                        "install.batch_success",
+                        installed = installed_count,
+                        total = total
                     ));
                 } else {
-                    ui::warn(format!(
-                        "Batch installation finished with issues: {installed_count}/{total} succeeded, {} failed.",
-                        failed.len()
+                    ui::warn(tr!(
+                        "install.batch_with_issues",
+                        installed = installed_count,
+                        total = total,
+                        failed = failed.len()
                     ));
                 }
             }
 
             if installed_count > 0 {
-                println!(
-                    "  {}",
-                    "Your Pumpkin server will load installed plugins on next startup or reload."
-                        .dimmed()
-                );
+                println!("  {}", tr!("install.server_load_hint").dimmed());
             }
 
             if !failed.is_empty() && total == 1 {
-                bail!("Failed to install '{}'", args.plugins[0]);
+                bail!("{}", tr!("install.failed", plugin = args.plugins[0]));
             }
         }
 
@@ -245,19 +254,19 @@ async fn run(cli: Cli) -> Result<()> {
                         market::PluginTarget::Marketplace(id) => id,
                         market::PluginTarget::DirectUrl(url) => url,
                     };
-                    format!("Are you sure you want to remove plugin '{target_name}'?")
+                    tr!("uninstall.confirm_single", plugin = target_name)
                 } else {
-                    format!(
-                        "Are you sure you want to remove {} plugins ({})?",
-                        args.plugins.len(),
-                        args.plugins.join(", ")
+                    tr!(
+                        "uninstall.confirm_multiple",
+                        count = args.plugins.len(),
+                        plugins = args.plugins.join(", ")
                     )
                 };
 
                 let confirm = Confirm::new(&prompt_text).with_default(false).prompt()?;
 
                 if !confirm {
-                    ui::warn("Plugin removal aborted.");
+                    ui::warn(tr!("uninstall.aborted"));
                     return Ok(());
                 }
             }
@@ -273,14 +282,18 @@ async fn run(cli: Cli) -> Result<()> {
 
                 match installer::remove_plugin(&plugins_dir, &target_name) {
                     Ok(removed_path) => {
-                        ui::success(format!(
-                            "Removed plugin file: {}",
-                            removed_path.display().to_string().cyan()
+                        ui::success(tr!(
+                            "uninstall.removed",
+                            path = removed_path.display().to_string().cyan()
                         ));
                         removed_count += 1;
                     }
                     Err(e) => {
-                        ui::error(format!("Failed to remove '{plugin_req}': {e}"));
+                        ui::error(tr!(
+                            "uninstall.failed_detail",
+                            plugin = plugin_req,
+                            error = e
+                        ));
                         failed.push((plugin_req.clone(), e.to_string()));
                     }
                 }
@@ -289,17 +302,18 @@ async fn run(cli: Cli) -> Result<()> {
             if args.plugins.len() > 1 {
                 println!();
                 if failed.is_empty() {
-                    ui::success(format!("Successfully removed {removed_count} plugin(s)."));
+                    ui::success(tr!("uninstall.batch_success", count = removed_count));
                 } else {
-                    ui::warn(format!(
-                        "Removal finished with issues: {removed_count}/{} succeeded.",
-                        args.plugins.len()
+                    ui::warn(tr!(
+                        "uninstall.batch_with_issues",
+                        removed = removed_count,
+                        total = args.plugins.len()
                     ));
                 }
             }
 
             if !failed.is_empty() && args.plugins.len() == 1 {
-                bail!("Failed to remove '{}'", args.plugins[0]);
+                bail!("{}", tr!("uninstall.failed", plugin = args.plugins[0]));
             }
         }
 
@@ -310,8 +324,11 @@ async fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&installed)?);
             } else {
                 println!(
-                    "Installed plugins in '{}':",
-                    plugins_dir.display().to_string().cyan()
+                    "{}",
+                    tr!(
+                        "installed.header",
+                        dir = plugins_dir.display().to_string().cyan()
+                    )
                 );
                 ui::print_installed_table(&installed);
             }
@@ -325,55 +342,54 @@ async fn run(cli: Cli) -> Result<()> {
                 // If it exists in lockfile, use its exact public_id!
                 if let Some(locked) = lockfile.find_plugin(target) {
                     let current_ver = locked.version.as_deref().unwrap_or("0.0.0");
-                    ui::info(format!(
-                        "Found tracked plugin '{}' in .ppm.lock (ID: {}, version: {})",
-                        locked.name.cyan(),
-                        locked.public_id.dimmed(),
-                        current_ver.bright_blue()
+                    ui::info(tr!(
+                        "update.tracked_found",
+                        name = locked.name.cyan(),
+                        id = locked.public_id.dimmed(),
+                        version = current_ver.bright_blue()
                     ));
 
                     if args.check {
                         match client.check_update(&locked.name, current_ver).await {
                             Ok(info) => {
-                                let latest = info.latest_version.unwrap_or_else(|| "latest".into());
+                                let latest =
+                                    info.latest_version.unwrap_or_else(|| tr!("common.latest"));
                                 if info.update_available {
-                                    ui::info(format!(
-                                        "Plugin '{}': update available ({} -> {})",
-                                        locked.name.cyan(),
-                                        current_ver.yellow(),
-                                        latest.bright_green().bold()
+                                    ui::info(tr!(
+                                        "update.available",
+                                        name = locked.name.cyan(),
+                                        current = current_ver.yellow(),
+                                        latest = latest.bright_green().bold()
                                     ));
                                 } else {
-                                    ui::info(format!(
-                                        "Plugin '{}': up to date ({})",
-                                        locked.name.cyan(),
-                                        current_ver.dimmed()
+                                    ui::info(tr!(
+                                        "update.up_to_date",
+                                        name = locked.name.cyan(),
+                                        version = current_ver.dimmed()
                                     ));
                                 }
                             }
                             Err(_) => {
                                 if let Ok(meta) = client.get_plugin(&locked.public_id).await {
-                                    let latest = meta.version.unwrap_or_else(|| "latest".into());
-                                    ui::info(format!(
-                                        "Plugin '{}': latest marketplace version is {}",
-                                        locked.name.cyan(),
-                                        latest.bright_green()
+                                    let latest =
+                                        meta.version.unwrap_or_else(|| tr!("common.latest"));
+                                    ui::info(tr!(
+                                        "update.latest_version",
+                                        name = locked.name.cyan(),
+                                        version = latest.bright_green()
                                     ));
                                 } else {
-                                    ui::warn(format!(
-                                        "Plugin '{}' not found on marketplace.",
-                                        locked.name
-                                    ));
+                                    ui::warn(tr!("update.not_found", name = locked.name));
                                 }
                             }
                         }
                         return Ok(());
                     }
 
-                    ui::info(format!(
-                        "Updating '{}' (ID: {})...",
-                        locked.name.cyan(),
-                        locked.public_id.dimmed()
+                    ui::info(tr!(
+                        "update.updating_with_id",
+                        name = locked.name.cyan(),
+                        id = locked.public_id.dimmed()
                     ));
 
                     let outcome = installer::install_plugin(
@@ -386,35 +402,32 @@ async fn run(cli: Cli) -> Result<()> {
                     )
                     .await?;
 
-                    ui::success(format!(
-                        "Updated '{}' -> {}",
-                        outcome.display_name.bright_green(),
-                        outcome.path.display().to_string().cyan()
+                    ui::success(tr!(
+                        "update.updated",
+                        name = outcome.display_name.bright_green(),
+                        path = outcome.path.display().to_string().cyan()
                     ));
                     return Ok(());
                 }
 
                 // If not in lockfile, resolve on marketplace
-                ui::info(format!(
-                    "'{}' not tracked in .ppm.lock; resolving on marketplace...",
-                    target.cyan()
-                ));
+                ui::info(tr!("update.not_tracked", plugin = target.cyan()));
 
                 if args.check {
                     if let Ok(meta) = client.get_plugin(target).await {
-                        let ver = meta.version.unwrap_or_else(|| "latest".into());
-                        ui::info(format!(
-                            "Plugin '{}': latest marketplace version is {}",
-                            meta.name.cyan(),
-                            ver.bright_green()
+                        let ver = meta.version.unwrap_or_else(|| tr!("common.latest"));
+                        ui::info(tr!(
+                            "update.latest_version",
+                            name = meta.name.cyan(),
+                            version = ver.bright_green()
                         ));
                     } else {
-                        ui::warn(format!("Plugin '{target}' not found on marketplace."));
+                        ui::warn(tr!("update.not_found", name = target));
                     }
                     return Ok(());
                 }
 
-                ui::info(format!("Updating '{target}'..."));
+                ui::info(tr!("update.updating", name = target));
                 let outcome = installer::install_plugin(
                     &client,
                     target,
@@ -425,10 +438,10 @@ async fn run(cli: Cli) -> Result<()> {
                 )
                 .await?;
 
-                ui::success(format!(
-                    "Updated '{}' -> {}",
-                    outcome.display_name.bright_green(),
-                    outcome.path.display().to_string().cyan()
+                ui::success(tr!(
+                    "update.updated",
+                    name = outcome.display_name.bright_green(),
+                    path = outcome.path.display().to_string().cyan()
                 ));
                 return Ok(());
             }
@@ -436,9 +449,9 @@ async fn run(cli: Cli) -> Result<()> {
             // Case 2: Update all plugins
             // Prioritize marketplace plugins recorded in .ppm.lock
             if !lockfile.plugins.is_empty() {
-                ui::info(format!(
-                    "Checking updates for {} marketplace plugin(s) from .ppm.lock...",
-                    lockfile.plugins.len()
+                ui::info(tr!(
+                    "update.checking_lockfile",
+                    count = lockfile.plugins.len()
                 ));
 
                 let mut updated_count = 0;
@@ -450,47 +463,46 @@ async fn run(cli: Cli) -> Result<()> {
                     if args.check {
                         match client.check_update(&locked.name, current_ver).await {
                             Ok(info) => {
-                                let latest = info.latest_version.unwrap_or_else(|| "latest".into());
+                                let latest =
+                                    info.latest_version.unwrap_or_else(|| tr!("common.latest"));
                                 if info.update_available {
-                                    ui::info(format!(
-                                        "Plugin '{}' (ID: {}): update available ({} -> {})",
-                                        locked.name.cyan(),
-                                        public_id.dimmed(),
-                                        current_ver.yellow(),
-                                        latest.bright_green().bold()
+                                    ui::info(tr!(
+                                        "update.available_with_id",
+                                        name = locked.name.cyan(),
+                                        id = public_id.dimmed(),
+                                        current = current_ver.yellow(),
+                                        latest = latest.bright_green().bold()
                                     ));
                                 } else {
-                                    ui::info(format!(
-                                        "Plugin '{}': up to date ({})",
-                                        locked.name.cyan(),
-                                        current_ver.dimmed()
+                                    ui::info(tr!(
+                                        "update.up_to_date",
+                                        name = locked.name.cyan(),
+                                        version = current_ver.dimmed()
                                     ));
                                 }
                             }
                             Err(_) => {
                                 if let Ok(meta) = client.get_plugin(public_id).await {
-                                    let latest = meta.version.unwrap_or_else(|| "latest".into());
-                                    ui::info(format!(
-                                        "Plugin '{}' (ID: {}): latest marketplace version is {}",
-                                        locked.name.cyan(),
-                                        public_id.dimmed(),
-                                        latest.bright_green()
+                                    let latest =
+                                        meta.version.unwrap_or_else(|| tr!("common.latest"));
+                                    ui::info(tr!(
+                                        "update.latest_version_with_id",
+                                        name = locked.name.cyan(),
+                                        id = public_id.dimmed(),
+                                        version = latest.bright_green()
                                     ));
                                 } else {
-                                    ui::warn(format!(
-                                        "Could not query update info for '{}'.",
-                                        locked.name
-                                    ));
+                                    ui::warn(tr!("update.query_failed", name = locked.name));
                                 }
                             }
                         }
                         continue;
                     }
 
-                    ui::info(format!(
-                        "Updating '{}' (ID: {})...",
-                        locked.name.cyan(),
-                        public_id.dimmed()
+                    ui::info(tr!(
+                        "update.updating_with_id",
+                        name = locked.name.cyan(),
+                        id = public_id.dimmed()
                     ));
 
                     match installer::install_plugin(
@@ -504,23 +516,25 @@ async fn run(cli: Cli) -> Result<()> {
                     .await
                     {
                         Ok(outcome) => {
-                            ui::success(format!(
-                                "Updated '{}' -> {}",
-                                outcome.display_name.bright_green(),
-                                outcome.path.display().to_string().cyan()
+                            ui::success(tr!(
+                                "update.updated",
+                                name = outcome.display_name.bright_green(),
+                                path = outcome.path.display().to_string().cyan()
                             ));
                             updated_count += 1;
                         }
                         Err(e) => {
-                            ui::error(format!("Failed to update '{}': {e}", locked.name));
+                            ui::error(tr!("update.failed", name = locked.name, error = e));
                         }
                     }
                 }
 
                 if !args.check {
                     println!();
-                    ui::success(format!(
-                        "Update process complete! {updated_count}/{total} plugin(s) updated."
+                    ui::success(tr!(
+                        "update.batch_complete",
+                        updated = updated_count,
+                        total = total
                     ));
                 }
 
@@ -530,35 +544,29 @@ async fn run(cli: Cli) -> Result<()> {
             // Fallback if no .ppm.lock exists: scan directory
             let installed = installer::scan_installed(&plugins_dir)?;
             if installed.is_empty() {
-                ui::warn(format!(
-                    "No plugins found in '{}'. Nothing to update.",
-                    plugins_dir.display()
-                ));
+                ui::warn(tr!("update.none_found", dir = plugins_dir.display()));
                 return Ok(());
             }
 
-            ui::info(format!(
-                "No .ppm.lock found. Scanning {} local plugin(s) on disk...",
-                installed.len()
-            ));
+            ui::info(tr!("update.scanning_disk", count = installed.len()));
 
             for p in installed {
                 let name = p.display_name().to_string();
                 if args.check {
                     if let Ok(meta) = client.get_plugin(&name).await {
-                        let ver = meta.version.unwrap_or_else(|| "latest".into());
-                        ui::info(format!(
-                            "Plugin '{}': latest marketplace version is {}",
-                            name.cyan(),
-                            ver.bright_green()
+                        let ver = meta.version.unwrap_or_else(|| tr!("common.latest"));
+                        ui::info(tr!(
+                            "update.latest_version",
+                            name = name.cyan(),
+                            version = ver.bright_green()
                         ));
                     } else {
-                        ui::warn(format!("Plugin '{name}' not found on marketplace."));
+                        ui::warn(tr!("update.not_found", name = name));
                     }
                     continue;
                 }
 
-                ui::info(format!("Updating '{name}'..."));
+                ui::info(tr!("update.updating", name = name));
                 match installer::install_plugin(
                     &client,
                     &name,
@@ -570,14 +578,14 @@ async fn run(cli: Cli) -> Result<()> {
                 .await
                 {
                     Ok(outcome) => {
-                        ui::success(format!(
-                            "Updated '{}' -> {}",
-                            outcome.display_name.bright_green(),
-                            outcome.path.display().to_string().cyan()
+                        ui::success(tr!(
+                            "update.updated",
+                            name = outcome.display_name.bright_green(),
+                            path = outcome.path.display().to_string().cyan()
                         ));
                     }
                     Err(e) => {
-                        ui::error(format!("Failed to update '{name}': {e}"));
+                        ui::error(tr!("update.failed", name = name, error = e));
                     }
                 }
             }
@@ -591,10 +599,7 @@ async fn run(cli: Cli) -> Result<()> {
 
             if !args.non_interactive && args.name.is_none() {
                 ui::print_logo();
-                println!(
-                    "{}",
-                    "Welcome to the Pumpkin Plugin Generator Wizard!\n".bright_cyan()
-                );
+                println!("{}\n", tr!("new.welcome").bright_cyan());
             }
 
             let config = WizardConfig {
@@ -608,20 +613,18 @@ async fn run(cli: Cli) -> Result<()> {
 
             let project_path = template::run_wizard(config)?;
 
-            ui::success(format!(
-                "Scaffolded new Pumpkin plugin project at '{}'!",
-                project_path.display().to_string().bright_green().bold()
+            ui::success(tr!(
+                "new.scaffolded",
+                path = project_path.display().to_string().bright_green().bold()
             ));
 
             println!();
-            println!("{}", "Next steps:".bright_yellow().bold());
-            println!("  1. Navigate to your plugin:");
+            println!("{}", tr!("new.next_steps").bright_yellow().bold());
+            println!("{}", tr!("new.step_cd"));
             println!("     {}", format!("cd {}", project_path.display()).cyan());
-            println!("  2. Read the instructions:");
+            println!("{}", tr!("new.step_readme"));
             println!("     {}", "cat README.md".cyan());
-            println!(
-                "  3. Build your WebAssembly plugin and copy to Pumpkin's plugins/ directory!"
-            );
+            println!("{}", tr!("new.step_build"));
             println!();
         }
 

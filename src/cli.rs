@@ -5,9 +5,14 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Command, CommandFactory, FromArgMatches, Parser, Subcommand};
+
+use crate::tr;
+
+mod i18n_output;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -33,11 +38,29 @@ pub struct Cli {
     #[arg(long, global = true, env = "PUMPKIN_PLUGINS_DIR")]
     pub plugins_dir: Option<PathBuf>,
 
+    /// Override display language/locale (e.g. en_US, zh_CN, zh_TW); auto-detected from system if omitted
+    #[arg(long, global = true, env = "PPM_LOCALE")]
+    pub locale: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
 
 impl Cli {
+    /// Parses CLI arguments, exiting with localized help or error output.
+    pub fn parse_localized() -> Self {
+        let mut command = localized_command();
+        match command.try_get_matches_from_mut(std::env::args_os()) {
+            Ok(matches) => Self::from_arg_matches(&matches).unwrap_or_else(|e| e.exit()),
+            Err(error) => {
+                let to_stderr = error.use_stderr();
+                let styled = should_style_stream(to_stderr);
+                let rendered = i18n_output::render(&error, &command, styled);
+                exit_with(&rendered, to_stderr, error.exit_code())
+            }
+        }
+    }
+
     /// Resolves the effective plugins directory.
     ///
     /// - If explicitly set via CLI or `PUMPKIN_PLUGINS_DIR`, uses that value.
@@ -47,6 +70,201 @@ impl Cli {
     pub fn resolved_plugins_dir(&self) -> PathBuf {
         resolve_plugins_dir(self.plugins_dir.as_deref())
     }
+}
+
+/// Pre-scans raw CLI arguments for `--locale <VALUE>` or `--locale=<VALUE>` so that
+/// i18n can be initialized before `clap` renders `--help` or validation messages.
+pub fn extract_locale_from_args<I, T>(args: I) -> Option<String>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let mut found = None;
+    let mut iter = args.into_iter().skip(1);
+    while let Some(arg) = iter.next() {
+        let s = arg.into();
+        let Some(text) = s.to_str() else {
+            continue;
+        };
+        if text == "--" {
+            break;
+        }
+        if text == "--locale" {
+            if let Some(val) = iter.next()
+                && let Some(val_str) = val.into().to_str()
+            {
+                found = Some(val_str.to_string());
+            }
+        } else if let Some(val) = text.strip_prefix("--locale=") {
+            found = Some(val.to_string());
+        }
+    }
+    found
+}
+
+/// Builds the `clap::Command` for `ppm` with localized descriptions and help strings.
+pub fn localized_command() -> Command {
+    let command = Cli::command()
+        .about(tr!("cli.about"))
+        .long_about(tr!("cli.long_about"))
+        .mut_arg("market_url", |a| a.help(tr!("cli.arg.market_url")))
+        .mut_arg("plugins_dir", |a| a.help(tr!("cli.arg.plugins_dir")))
+        .mut_arg("locale", |a| {
+            a.help(tr!(
+                "cli.arg.locale",
+                locales = crate::i18n::available_locales().join(", ")
+            ))
+        })
+        .mut_subcommand("search", |sub| {
+            sub.about(tr!("cli.cmd.search"))
+                .mut_arg("query", |a| a.help(tr!("cli.search.query")))
+                .mut_arg("category", |a| a.help(tr!("cli.search.category")))
+                .mut_arg("type_", |a| a.help(tr!("cli.search.type")))
+                .mut_arg("limit", |a| a.help(tr!("cli.search.limit")))
+                .mut_arg("page", |a| a.help(tr!("cli.search.page")))
+                .mut_arg("json", |a| a.help(tr!("cli.search.json")))
+        })
+        .mut_subcommand("info", |sub| {
+            sub.about(tr!("cli.cmd.info"))
+                .mut_arg("plugin", |a| a.help(tr!("cli.info.plugin")))
+                .mut_arg("json", |a| a.help(tr!("cli.info.json")))
+        })
+        .mut_subcommand("install", |sub| {
+            sub.about(tr!("cli.cmd.install"))
+                .mut_arg("plugins", |a| a.help(tr!("cli.install.plugins")))
+                .mut_arg("output", |a| a.help(tr!("cli.install.output")))
+                .mut_arg("force", |a| a.help(tr!("cli.install.force")))
+                .mut_arg("token", |a| a.help(tr!("cli.install.token")))
+        })
+        .mut_subcommand("uninstall", |sub| {
+            sub.about(tr!("cli.cmd.uninstall"))
+                .mut_arg("plugins", |a| a.help(tr!("cli.uninstall.plugins")))
+                .mut_arg("yes", |a| a.help(tr!("cli.uninstall.yes")))
+        })
+        .mut_subcommand("installed", |sub| {
+            sub.about(tr!("cli.cmd.installed"))
+                .mut_arg("json", |a| a.help(tr!("cli.installed.json")))
+        })
+        .mut_subcommand("update", |sub| {
+            sub.about(tr!("cli.cmd.update"))
+                .mut_arg("plugin", |a| a.help(tr!("cli.update.plugin")))
+                .mut_arg("check", |a| a.help(tr!("cli.update.check")))
+                .mut_arg("token", |a| a.help(tr!("cli.update.token")))
+        })
+        .mut_subcommand("new", |sub| {
+            sub.about(tr!("cli.cmd.new"))
+                .mut_arg("name", |a| a.help(tr!("cli.new.name")))
+                .mut_arg("lang", |a| a.help(tr!("cli.new.lang")))
+                .mut_arg("author", |a| a.help(tr!("cli.new.author")))
+                .mut_arg("description", |a| a.help(tr!("cli.new.description")))
+                .mut_arg("dir", |a| a.help(tr!("cli.new.dir")))
+                .mut_arg("non_interactive", |a| {
+                    a.help(tr!("cli.new.non_interactive"))
+                })
+        })
+        .mut_subcommand("self-install", |sub| {
+            sub.about(tr!("cli.cmd.self_install"))
+                .mut_arg("dir", |a| a.help(tr!("cli.self_install.dir")))
+                .mut_arg("force", |a| a.help(tr!("cli.self_install.force")))
+        });
+
+    localize_builtin_args(command)
+}
+
+fn localized_help_arg() -> clap::Arg {
+    clap::Arg::new("help")
+        .short('h')
+        .long("help")
+        .action(clap::ArgAction::Help)
+        .help(tr!("cli.arg.help"))
+        .long_help(tr!("cli.arg.help_long"))
+}
+
+fn localized_version_arg() -> clap::Arg {
+    clap::Arg::new("version")
+        .short('V')
+        .long("version")
+        .action(clap::ArgAction::Version)
+        .help(tr!("cli.arg.version"))
+}
+
+/// Replaces the descriptions `clap` injects for its own `--help`, `--version`
+/// and `help` entries.
+///
+/// clap adds those arguments while building the command tree, after all
+/// `mut_arg` calls have run, so their help text can only be set by inserting
+/// our own arguments and switching the built-in ones off.
+fn localize_builtin_args(mut command: Command) -> Command {
+    command = command
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+        .arg(localized_help_arg())
+        .arg(localized_version_arg());
+
+    // Subcommands carry their own copy of the help/version flags.
+    let names: Vec<String> = command
+        .get_subcommands()
+        .filter(|subcommand| subcommand.get_name() != "help")
+        .map(|subcommand| subcommand.get_name().to_string())
+        .collect();
+
+    for name in names {
+        command = command.mut_subcommand(name, localize_subcommand_builtins);
+    }
+
+    command
+}
+
+/// Adds the translated `-h`/`--help` flags to a subcommand.
+fn localize_subcommand_builtins(subcommand: Command) -> Command {
+    subcommand
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+        .arg(localized_help_arg())
+}
+
+/// Decides whether `clap`'s ANSI styling should be emitted on stdout/stderr,
+/// honoring `CLICOLOR_FORCE`, `NO_COLOR`, `CLICOLOR`, `TERM=dumb`, and TTY status.
+fn should_style_stream(to_stderr: bool) -> bool {
+    use std::io::IsTerminal;
+
+    let is_tty = if to_stderr {
+        std::io::stderr().is_terminal()
+    } else {
+        std::io::stdout().is_terminal()
+    };
+
+    should_style_with_env(is_tty, |name| std::env::var(name).ok())
+}
+
+fn should_style_with_env(is_tty: bool, env_get: impl Fn(&str) -> Option<String>) -> bool {
+    if env_get("CLICOLOR_FORCE").is_some_and(|v| !v.is_empty() && v != "0") {
+        return true;
+    }
+    if env_get("NO_COLOR").is_some_and(|v| !v.is_empty()) {
+        return false;
+    }
+    if env_get("CLICOLOR").as_deref() == Some("0") {
+        return false;
+    }
+    if env_get("TERM").as_deref() == Some("dumb") {
+        return false;
+    }
+    is_tty
+}
+
+/// Writes output to the stream `clap` would have used and exits with `code`.
+fn exit_with(text: &str, to_stderr: bool, code: i32) -> ! {
+    if to_stderr {
+        let mut stderr = std::io::stderr();
+        let _ = std::io::Write::write_all(&mut stderr, text.as_bytes());
+        let _ = std::io::Write::flush(&mut stderr);
+    } else {
+        let mut stdout = std::io::stdout();
+        let _ = std::io::Write::write_all(&mut stdout, text.as_bytes());
+        let _ = std::io::Write::flush(&mut stdout);
+    }
+    std::process::exit(code)
 }
 
 /// Automatically resolves the target plugins directory based on current working directory context.
@@ -258,5 +476,57 @@ mod tests {
         let explicit = Path::new("/custom/plugins/path");
         let resolved = resolve_plugins_dir(Some(explicit));
         assert_eq!(resolved, PathBuf::from("/custom/plugins/path"));
+    }
+
+    #[test]
+    fn test_localized_command_valid() {
+        localized_command().debug_assert();
+    }
+
+    #[test]
+    fn test_extract_locale_from_args() {
+        assert_eq!(
+            extract_locale_from_args(["ppm", "--locale", "zh_CN", "installed"]),
+            Some("zh_CN".into())
+        );
+        assert_eq!(
+            extract_locale_from_args(["ppm", "search", "--locale=zh_TW", "foo"]),
+            Some("zh_TW".into())
+        );
+        assert_eq!(
+            extract_locale_from_args(["ppm", "search", "--", "--locale", "zh_CN"]),
+            None
+        );
+        assert_eq!(extract_locale_from_args(["ppm", "installed"]), None);
+    }
+
+    #[test]
+    fn test_should_style_with_env() {
+        assert!(should_style_with_env(true, |_| None));
+        assert!(!should_style_with_env(false, |_| None));
+
+        // NO_COLOR disables ANSI even on a terminal (empty NO_COLOR is ignored per spec).
+        assert!(!should_style_with_env(true, |k| {
+            (k == "NO_COLOR").then(|| "1".into())
+        }));
+        assert!(should_style_with_env(true, |k| {
+            (k == "NO_COLOR").then(String::new)
+        }));
+
+        // CLICOLOR=0 and TERM=dumb disable ANSI on a terminal.
+        assert!(!should_style_with_env(true, |k| {
+            (k == "CLICOLOR").then(|| "0".into())
+        }));
+        assert!(!should_style_with_env(true, |k| {
+            (k == "TERM").then(|| "dumb".into())
+        }));
+
+        // CLICOLOR_FORCE forces ANSI even when piped.
+        assert!(should_style_with_env(false, |k| {
+            (k == "CLICOLOR_FORCE").then(|| "1".into())
+        }));
+        assert!(!should_style_with_env(false, |k| {
+            (k == "CLICOLOR_FORCE").then(|| "0".into())
+        }));
     }
 }

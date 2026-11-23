@@ -8,9 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     fs::create_dir_all(dir.join("source"))?;
@@ -32,7 +32,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("dub.json"), dub_json).context("Failed to write dub.json")?;
+    write_file(&dir.join("dub.json"), "dub.json", dub_json)?;
 
     // Makefile
     let makefile = format!(
@@ -51,7 +51,7 @@ clean:
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("Makefile"), makefile).context("Failed to write Makefile")?;
+    write_file(&dir.join("Makefile"), "Makefile", makefile)?;
 
     // .gitignore
     let gitignore = r#".dub/
@@ -59,7 +59,7 @@ dist/
 *.wasm
 *.o
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // source/app.d
     let app_d = format!(
@@ -123,7 +123,7 @@ extern(C) void exports_plugin_init_plugin() {{
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("source/app.d"), app_d).context("Failed to write source/app.d")?;
+    write_file(&dir.join("source/app.d"), "source/app.d", app_d)?;
 
     // README.md
     let readme = format!(
@@ -158,7 +158,7 @@ Copy `{name}.wasm` to your Pumpkin server's `plugins/` directory.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

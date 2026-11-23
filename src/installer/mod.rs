@@ -17,6 +17,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::io::AsyncWriteExt;
 
 use crate::market::{ExternalPluginMetadata, MarketClient, PluginTarget, parse_plugin_input};
+use crate::tr;
 pub use local::*;
 pub use lockfile::*;
 
@@ -38,12 +39,8 @@ pub async fn install_plugin(
     token: Option<&str>,
 ) -> Result<InstalledOutcome> {
     if !plugins_dir.exists() {
-        fs::create_dir_all(plugins_dir).with_context(|| {
-            format!(
-                "Failed to create plugins directory at '{}'",
-                plugins_dir.display()
-            )
-        })?;
+        fs::create_dir_all(plugins_dir)
+            .with_context(|| tr!("installer.create_dir_failed", path = plugins_dir.display()))?;
     }
 
     // Initiate download based on target type
@@ -65,8 +62,8 @@ pub async fn install_plugin(
 
     if dest_path.exists() && !force {
         bail!(
-            "Target file '{}' already exists. Use '--force' / '-f' to overwrite.",
-            dest_path.display()
+            "{}",
+            tr!("installer.file_exists", path = dest_path.display())
         );
     }
 
@@ -83,48 +80,59 @@ pub async fn install_plugin(
         pb
     } else {
         let pb = ProgressBar::new_spinner();
+        // The translated word goes through `{msg}` rather than into the template
+        // itself: a translation containing `{`/`}` must not break the template.
         pb.set_style(
             ProgressStyle::default_spinner()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] {bytes} downloaded ({bytes_per_sec})",
-                )
-                .unwrap(),
+                .template("{spinner:.green} [{elapsed_precise}] {bytes} {msg} ({bytes_per_sec})")
+                .expect("static spinner template"),
         );
+        pb.set_message(tr!("installer.downloaded"));
         pb
     };
 
     let temp_path = dest_path.with_extension("tmp.download");
-    let mut file = tokio::fs::File::create(&temp_path)
-        .await
-        .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))?;
-
-    let mut stream = resp.bytes_stream();
-    let mut downloaded: u64 = 0;
-
-    while let Some(item) = stream.next().await {
-        let chunk = item.context("Error while downloading file stream")?;
-        file.write_all(&chunk)
+    let write_result: Result<()> = async {
+        let mut file = tokio::fs::File::create(&temp_path)
             .await
-            .context("Error writing chunk to file")?;
-        downloaded += chunk.len() as u64;
-        pb.set_position(downloaded);
+            .with_context(|| tr!("installer.create_temp_failed", path = temp_path.display()))?;
+
+        let mut stream = resp.bytes_stream();
+        let mut downloaded: u64 = 0;
+
+        while let Some(item) = stream.next().await {
+            let chunk = item.with_context(|| tr!("installer.stream_error"))?;
+            file.write_all(&chunk)
+                .await
+                .with_context(|| tr!("installer.write_chunk_error"))?;
+            downloaded += chunk.len() as u64;
+            pb.set_position(downloaded);
+        }
+
+        file.flush()
+            .await
+            .with_context(|| tr!("installer.flush_failed"))?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(err) = write_result {
+        pb.finish_and_clear();
+        let _ = fs::remove_file(&temp_path);
+        return Err(err);
     }
 
-    file.flush().await.context("Failed to flush file")?;
-    drop(file);
+    pb.finish_with_message(tr!("installer.download_complete"));
 
-    pb.finish_with_message("Download complete!");
-
-    // Rename temp file to final destination
+    // Rename temp file to final destination (atomic replace on Unix; remove first on Windows)
+    #[cfg(windows)]
     if dest_path.exists() {
         let _ = fs::remove_file(&dest_path);
     }
-    fs::rename(&temp_path, &dest_path).with_context(|| {
-        format!(
-            "Failed to move downloaded file to '{}'",
-            dest_path.display()
-        )
-    })?;
+    if let Err(err) = fs::rename(&temp_path, &dest_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(err).with_context(|| tr!("installer.move_failed", path = dest_path.display()));
+    }
 
     let outcome = InstalledOutcome {
         path: dest_path,

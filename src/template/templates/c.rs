@@ -5,12 +5,11 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     // pumpkin_api.h
@@ -60,7 +59,7 @@ void pumpkin_register_plugin(pumpkin_plugin_t plugin);
 
 #endif
 "#;
-    fs::write(dir.join("pumpkin_api.h"), pumpkin_api_h).context("Failed to write pumpkin_api.h")?;
+    write_file(&dir.join("pumpkin_api.h"), "pumpkin_api.h", pumpkin_api_h)?;
 
     // plugin.c
     let plugin_c = format!(
@@ -100,7 +99,7 @@ REGISTER_PUMPKIN_PLUGIN(((pumpkin_plugin_t){{
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("plugin.c"), plugin_c).context("Failed to write plugin.c")?;
+    write_file(&dir.join("plugin.c"), "plugin.c", plugin_c)?;
 
     // Makefile
     let makefile = format!(
@@ -119,14 +118,14 @@ clean:
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("Makefile"), makefile).context("Failed to write Makefile")?;
+    write_file(&dir.join("Makefile"), "Makefile", makefile)?;
 
     // .gitignore
     let gitignore = r#"*.wasm
 *.o
 build/
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // README.md
     let readme = format!(
@@ -147,7 +146,7 @@ Copy `{name}.wasm` to your server's `plugins/` directory.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

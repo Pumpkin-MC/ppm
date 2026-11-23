@@ -15,6 +15,17 @@ pub mod rust;
 pub mod typescript;
 pub mod zig;
 
+use std::fs;
+use std::path::Path;
+
+use anyhow::{Context, Result};
+
+use crate::tr;
+
+pub fn write_file(path: &Path, label: &str, content: impl AsRef<[u8]>) -> Result<()> {
+    fs::write(path, content).with_context(|| tr!("template.write_failed", file = label))
+}
+
 #[derive(Debug, Clone)]
 pub struct TemplateContext {
     pub name: String,
