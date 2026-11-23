@@ -210,7 +210,7 @@ Completions are automatically placed into:
 | `PUMPKIN_MARKET_URL` | `--market-url <URL>` | `https://market.pumpkinmc.org` | Pumpkin Marketplace API base URL |
 | `PUMPKIN_PLUGINS_DIR` | `--plugins-dir <DIR>` | Auto-detected | Directory where plugins are installed (auto-resolves server root vs plugins dir) |
 | `PPM_TOKEN` | `--token <TOKEN>` | `None` | Authentication token for private/paid plugins |
-| `PPM_LOCALE` / `PPM_LANG` | `--locale <LOCALE>` | Auto-detected | Display language override (e.g. `en_US`, `zh_CN`, `zh_TW`); auto-detected from OS/environment locale with `en_US` fallback |
+| `PPM_LOCALE` / `PPM_LANG` | `--locale <LOCALE>` | Auto-detected | Display language override (e.g. `en_US`, `zh_CN`, `zh_HK`, `zh_TW`); auto-detected from OS/environment locale with `en_US` fallback |
 
 ### Internationalization (i18n)
 

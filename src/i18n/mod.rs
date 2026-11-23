@@ -325,6 +325,16 @@ fn canonical_region(language: &str) -> Option<&'static str> {
     }
 }
 
+/// The regional variant preferred when a script is known and multiple regional
+/// catalogs share that script (e.g. `zh_HK` and `zh_TW` both use `hant`).
+fn canonical_script_region(language: &str, script: &str) -> Option<&'static str> {
+    match (language, script) {
+        ("zh", "hans") => Some("cn"),
+        ("zh", "hant") => Some("tw"),
+        _ => None,
+    }
+}
+
 /// Strips the POSIX `.encoding` and `@modifier` parts of a locale name.
 fn strip_encoding_and_modifier(raw: &str) -> (&str, Option<&str>) {
     let trimmed = raw.trim();
@@ -425,15 +435,37 @@ fn resolve_locale_from_available<'a>(
             return code;
         }
 
-        // 2. Same language and script, ignoring the region:
-        //    `zh-Hans-CN`/`zh_SG` -> `zh_CN`, `zh-Hant-TW`/`zh_HK` -> `zh_TW`.
-        //    Script wins over region, so `zh-Hant-CN` still yields traditional text.
-        if let Some(script) = parsed.inferred_script()
-            && let Some((code, _)) = parsed_available.iter().find(|(_, known)| {
+        // 2. Same language and script:
+        //    First prefer an exact region match within the script (`zh-Hant-HK` -> `zh_HK`,
+        //    `zh-Hant-TW` -> `zh_TW`), then the canonical region for that script (`zh-Hant`
+        //    and `zh-Hant-CN` -> `zh_TW`), then the first matching catalog in sorted order.
+        //    Script always outranks region, so `zh-Hant-CN` still yields traditional text.
+        if let Some(script) = parsed.inferred_script() {
+            if let Some(region) = parsed.region.as_deref()
+                && let Some((code, _)) = parsed_available.iter().find(|(_, known)| {
+                    known.language == parsed.language
+                        && known.inferred_script() == Some(script)
+                        && known.region.as_deref() == Some(region)
+                })
+            {
+                return code;
+            }
+
+            if let Some(canonical) = canonical_script_region(&parsed.language, script)
+                && let Some((code, _)) = parsed_available.iter().find(|(_, known)| {
+                    known.language == parsed.language
+                        && known.inferred_script() == Some(script)
+                        && known.region.as_deref() == Some(canonical)
+                })
+            {
+                return code;
+            }
+
+            if let Some((code, _)) = parsed_available.iter().find(|(_, known)| {
                 known.language == parsed.language && known.inferred_script() == Some(script)
-            })
-        {
-            return code;
+            }) {
+                return code;
+            }
         }
 
         // 3. Same language and region (for languages without script variants).
@@ -648,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_script_outranks_region() {
-        let available = ["en_US", "zh_CN", "zh_TW"];
+        let available = ["en_US", "zh_CN", "zh_HK", "zh_TW"];
 
         // A traditional-script request must not be answered with simplified text
         // just because the region component matches.
@@ -659,6 +691,24 @@ mod tests {
         assert_eq!(
             resolve_locale_from_available(&["zh-Hans-TW".into()], &available, "en_US"),
             "zh_CN"
+        );
+        // When both `zh_HK` and `zh_TW` are present, explicit script+region tags
+        // must keep their exact region instead of falling to alphabetical order.
+        assert_eq!(
+            resolve_locale_from_available(&["zh-Hant-TW".into()], &available, "en_US"),
+            "zh_TW"
+        );
+        assert_eq!(
+            resolve_locale_from_available(&["zh-Hant-HK".into()], &available, "en_US"),
+            "zh_HK"
+        );
+        assert_eq!(
+            resolve_locale_from_available(&["zh_HK.UTF-8".into()], &available, "en_US"),
+            "zh_HK"
+        );
+        assert_eq!(
+            resolve_locale_from_available(&["zh-Hant".into()], &available, "en_US"),
+            "zh_TW"
         );
     }
 
@@ -782,6 +832,7 @@ mod tests {
         let locales = available_locales();
         assert!(locales.contains(&default_code()));
         assert!(locales.contains(&"zh_CN"));
+        assert!(locales.contains(&"zh_HK"));
         assert!(locales.contains(&"zh_TW"));
         assert!(locales.windows(2).all(|pair| pair[0] < pair[1]));
 
@@ -792,6 +843,10 @@ mod tests {
         assert_eq!(
             t_for("zh_CN", "ui.no_plugins_found"),
             "未找到符合条件的插件。"
+        );
+        assert_eq!(
+            t_for("zh_HK", "ui.no_plugins_found"),
+            "找不到符合條件的插件。"
         );
         assert_eq!(
             t_for("zh_TW", "ui.no_plugins_found"),
