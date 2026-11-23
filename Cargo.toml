@@ -2,7 +2,10 @@
 name = "ppm"
 version = "0.1.0"
 edition = "2024"
-authors = ["Alexander Medvedev <lilalexmed@proton.me>", "Pumpkin-MC Contributors"]
+authors = [
+    "Alexander Medvedev <lilalexmed@proton.me>",
+    "Pumpkin-MC Contributors",
+]
 description = "Pumpkin Package Manager - The official CLI tool and package manager for Pumpkin Minecraft server plugins"
 repository = "https://github.com/Pumpkin-MC/ppm"
 homepage = "https://pumpkinmc.org"
@@ -12,12 +15,21 @@ categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive", "cargo", "env"] }
-tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls", "query"] }
+tokio = { version = "1.53", features = [
+    "macros",
+    "rt-multi-thread",
+    "fs",
+    "io-util",
+] }
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls",
+    "query",
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
-thiserror = "2.0"
 inquire = "0.9"
 indicatif = { version = "0.18", features = ["tokio"] }
 comfy-table = "8.0"
@@ -25,3 +37,7 @@ colored = "3.1"
 futures-util = "0.3"
 clap_complete = "4.6"
 toml = "1.1.6"
+sys-locale = "0.3"
+
+[build-dependencies]
+serde_json = "1.0"

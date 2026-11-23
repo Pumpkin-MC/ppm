@@ -12,6 +12,8 @@ use std::time::SystemTime;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::tr;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPlugin {
     pub filename: String,
@@ -45,6 +47,7 @@ impl InstalledPlugin {
         self.filename
             .strip_suffix(".wasm.deactivated")
             .or_else(|| self.filename.strip_suffix(".wasm"))
+            .or_else(|| self.filename.strip_suffix(".deactivated"))
             .unwrap_or(&self.filename)
     }
 }
@@ -53,13 +56,13 @@ fn format_system_time(time: SystemTime) -> String {
     if let Ok(duration) = SystemTime::now().duration_since(time) {
         let secs = duration.as_secs();
         if secs < 60 {
-            "just now".to_string()
+            tr!("time.just_now")
         } else if secs < 3600 {
-            format!("{}m ago", secs / 60)
+            tr!("time.minutes_ago", n = secs / 60)
         } else if secs < 86400 {
-            format!("{}h ago", secs / 3600)
+            tr!("time.hours_ago", n = secs / 3600)
         } else {
-            format!("{}d ago", secs / 86400)
+            tr!("time.days_ago", n = secs / 86400)
         }
     } else {
         "-".to_string()
@@ -74,12 +77,8 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
 
     let lockfile = super::lockfile::Lockfile::load_from_dir(plugins_dir).ok();
     let mut list = Vec::new();
-    let entries = fs::read_dir(plugins_dir).with_context(|| {
-        format!(
-            "Failed to read plugins directory: {}",
-            plugins_dir.display()
-        )
-    })?;
+    let entries = fs::read_dir(plugins_dir)
+        .with_context(|| tr!("local.read_dir_failed", path = plugins_dir.display()))?;
 
     for entry in entries {
         let entry = entry?;
@@ -134,12 +133,24 @@ pub fn scan_installed(plugins_dir: &Path) -> Result<Vec<InstalledPlugin>> {
 pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     if !plugins_dir.exists() {
         bail!(
-            "Plugins directory '{}' does not exist.",
-            plugins_dir.display()
+            "{}",
+            tr!("local.dir_not_found", path = plugins_dir.display())
         );
     }
 
     let trimmed = plugin.trim();
+    // Guard against path traversal (`../...`, `/etc/...`) escaping `plugins_dir`.
+    if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains(['/', '\\']) {
+        bail!(
+            "{}",
+            tr!(
+                "local.plugin_not_found",
+                plugin = trimmed,
+                dir = plugins_dir.display()
+            )
+        );
+    }
+
     let direct_path = plugins_dir.join(trimmed);
     let wasm_path = plugins_dir.join(format!("{trimmed}.wasm"));
     let deact_path = plugins_dir.join(format!("{trimmed}.wasm.deactivated"));
@@ -151,27 +162,33 @@ pub fn remove_plugin(plugins_dir: &Path, plugin: &str) -> Result<PathBuf> {
     } else if deact_path.exists() && deact_path.is_file() {
         deact_path
     } else {
-        // Try case-insensitive lookup
+        // Try case-insensitive lookup by filename, display name, or marketplace public_id
         let installed = scan_installed(plugins_dir)?;
         let found = installed.into_iter().find(|p| {
             p.filename.eq_ignore_ascii_case(trimmed)
                 || p.display_name().eq_ignore_ascii_case(trimmed)
+                || p.public_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(trimmed))
         });
 
         match found {
             Some(p) => p.path,
             None => {
                 bail!(
-                    "Plugin '{}' not found in '{}'",
-                    trimmed,
-                    plugins_dir.display()
+                    "{}",
+                    tr!(
+                        "local.plugin_not_found",
+                        plugin = trimmed,
+                        dir = plugins_dir.display()
+                    )
                 );
             }
         }
     };
 
     fs::remove_file(&target_path)
-        .with_context(|| format!("Failed to remove plugin file: {}", target_path.display()))?;
+        .with_context(|| tr!("local.remove_failed", path = target_path.display()))?;
 
     // Also clean up entry from .ppm.lock if present
     if let Ok(mut lockfile) = super::lockfile::Lockfile::load_from_dir(plugins_dir) {
@@ -244,5 +261,52 @@ mod tests {
             is_managed: false,
         };
         assert_eq!(p2.display_name(), "DeactPlugin");
+
+        let p3 = InstalledPlugin {
+            filename: "Legacy.deactivated".into(),
+            ..p2
+        };
+        assert_eq!(p3.display_name(), "Legacy");
+    }
+
+    #[test]
+    fn test_remove_plugin_rejects_traversal_and_matches_public_id() {
+        let base = std::env::temp_dir().join(format!("ppm-local-test-{}", std::process::id()));
+        let plugins_dir = base.join("plugins");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&plugins_dir).unwrap();
+
+        // A file outside plugins_dir must never be removed via path traversal.
+        let outside = base.join("keep.txt");
+        fs::write(&outside, b"keep").unwrap();
+        assert!(remove_plugin(&plugins_dir, "../keep.txt").is_err());
+        assert!(outside.exists());
+
+        // A lockfile-tracked plugin can be removed by its marketplace public_id.
+        let wasm = plugins_dir.join("EpicRTP.wasm");
+        fs::write(&wasm, b"\0asm").unwrap();
+        let mut lock = super::super::lockfile::Lockfile::default();
+        lock.plugins.insert(
+            "S1zisQxa".into(),
+            super::super::lockfile::LockedPlugin {
+                id: 1,
+                public_id: "S1zisQxa".into(),
+                name: "EpicRTP".into(),
+                author: "Alex".into(),
+                version: Some("1.2.0".into()),
+                file: "EpicRTP.wasm".into(),
+                updated_at: Some("2026-10-01".into()),
+            },
+        );
+        lock.save_to_dir(&plugins_dir).unwrap();
+
+        let removed = remove_plugin(&plugins_dir, "S1zisQxa").unwrap();
+        assert_eq!(removed, wasm);
+        assert!(!wasm.exists());
+
+        let reloaded = super::super::lockfile::Lockfile::load_from_dir(&plugins_dir).unwrap();
+        assert!(reloaded.plugins.is_empty());
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

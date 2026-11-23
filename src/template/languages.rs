@@ -10,6 +10,8 @@ use std::str::FromStr;
 
 use anyhow::{Result, bail};
 
+use crate::tr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginLanguage {
     Rust,
@@ -36,17 +38,17 @@ impl PluginLanguage {
         PluginLanguage::TypeScript,
     ];
 
-    pub fn display_label(&self) -> &'static str {
+    pub fn display_label(&self) -> String {
         match self {
-            Self::Rust => "Rust (Recommended - pumpkin-plugin-api)",
-            Self::Python => "Python (pumpkin-api)",
-            Self::CSharp => "C# (.NET 10 with PumpkinMC.PumpkinApi)",
-            Self::C => "C (pumpkin-api-c)",
-            Self::Go => "Go (github.com/Pumpkin-MC/pumpkin-api-go)",
-            Self::Kotlin => "Kotlin (wasmWasi Multiplatform)",
-            Self::D => "D (dlang with LDC wasm32-wasi)",
-            Self::Zig => "Zig (native wasm32-wasi target)",
-            Self::TypeScript => "TypeScript / JavaScript (@pumpkinmc/pumpkin-api-ts)",
+            Self::Rust => tr!("lang.rust_label"),
+            Self::Python => "Python (pumpkin-api)".to_string(),
+            Self::CSharp => "C# (.NET 10 with PumpkinMC.PumpkinApi)".to_string(),
+            Self::C => "C (pumpkin-api-c)".to_string(),
+            Self::Go => "Go (github.com/Pumpkin-MC/pumpkin-api-go)".to_string(),
+            Self::Kotlin => "Kotlin (wasmWasi Multiplatform)".to_string(),
+            Self::D => "D (dlang with LDC wasm32-wasi)".to_string(),
+            Self::Zig => "Zig (native wasm32-wasi target)".to_string(),
+            Self::TypeScript => "TypeScript / JavaScript (@pumpkinmc/pumpkin-api-ts)".to_string(),
         }
     }
 
@@ -86,9 +88,7 @@ impl FromStr for PluginLanguage {
             "d" | "dlang" => Ok(Self::D),
             "zig" => Ok(Self::Zig),
             "typescript" | "ts" | "javascript" | "js" => Ok(Self::TypeScript),
-            other => bail!(
-                "Unknown plugin language: '{other}'. Supported: rust, python (py), csharp (cs), c, go, kotlin (kt), d, zig, typescript (ts)"
-            ),
+            other => bail!("{}", tr!("lang.unknown", lang = other)),
         }
     }
 }

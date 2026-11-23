@@ -8,9 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     fs::create_dir_all(dir.join("src"))?;
@@ -39,7 +39,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("package.json"), package_json).context("Failed to write package.json")?;
+    write_file(&dir.join("package.json"), "package.json", package_json)?;
 
     // tsconfig.json
     let tsconfig = r#"{
@@ -55,14 +55,14 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
   "include": ["src/**/*"]
 }
 "#;
-    fs::write(dir.join("tsconfig.json"), tsconfig).context("Failed to write tsconfig.json")?;
+    write_file(&dir.join("tsconfig.json"), "tsconfig.json", tsconfig)?;
 
     // .gitignore
     let gitignore = r#"node_modules/
 dist/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // src/index.ts
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -136,7 +136,7 @@ export * from "@pumpkinmc/pumpkin-api-ts";
         load_body = load_body
     );
 
-    fs::write(dir.join("src/index.ts"), index_ts).context("Failed to write src/index.ts")?;
+    write_file(&dir.join("src/index.ts"), "src/index.ts", index_ts)?;
 
     // README.md
     let readme = format!(
@@ -164,7 +164,7 @@ A TypeScript plugin for Pumpkin Minecraft Server compiled to WebAssembly.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

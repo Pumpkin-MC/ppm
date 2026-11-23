@@ -8,9 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     let pkg_name = ctx.name.replace(['-', '_'], "").to_lowercase();
@@ -33,8 +33,11 @@ kotlin {
     }
 }
 "#;
-    fs::write(dir.join("build.gradle.kts"), build_gradle)
-        .context("Failed to write build.gradle.kts")?;
+    write_file(
+        &dir.join("build.gradle.kts"),
+        "build.gradle.kts",
+        build_gradle,
+    )?;
 
     // settings.gradle.kts
     let settings_gradle = format!(
@@ -42,21 +45,27 @@ kotlin {
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("settings.gradle.kts"), settings_gradle)
-        .context("Failed to write settings.gradle.kts")?;
+    write_file(
+        &dir.join("settings.gradle.kts"),
+        "settings.gradle.kts",
+        settings_gradle,
+    )?;
 
     // gradle.properties
     let gradle_props = r#"kotlin.wasm.componentModel.enabled=true
 "#;
-    fs::write(dir.join("gradle.properties"), gradle_props)
-        .context("Failed to write gradle.properties")?;
+    write_file(
+        &dir.join("gradle.properties"),
+        "gradle.properties",
+        gradle_props,
+    )?;
 
     // .gitignore
     let gitignore = r#".gradle/
 build/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // Main.kt
     let struct_name = ctx.struct_name();
@@ -90,7 +99,7 @@ fun main() {{
         desc = ctx.description,
         struct_name = struct_name
     );
-    fs::write(src_dir.join("Main.kt"), main_kt).context("Failed to write Main.kt")?;
+    write_file(&src_dir.join("Main.kt"), "Main.kt", main_kt)?;
 
     // README.md
     let readme = format!(
@@ -123,7 +132,7 @@ Copy the `.wasm` file into your Pumpkin server's `plugins/` directory.
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

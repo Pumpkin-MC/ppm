@@ -15,6 +15,7 @@ use super::models::{
     CheckUpdateResponse, ExternalPluginMetadata, ListPluginsParams, PluginTarget,
     parse_plugin_input,
 };
+use crate::tr;
 
 /// Client for communicating with the Pumpkin Marketplace REST API.
 #[derive(Clone, Debug)]
@@ -60,18 +61,18 @@ impl MarketClient {
             .query(params)
             .send()
             .await
-            .context("Failed to connect to Pumpkin Marketplace")?;
+            .with_context(|| tr!("market.connect_failed"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            bail!("Marketplace API error ({status}): {text}");
+            bail!("{}", tr!("market.api_error", status = status, text = text));
         }
 
         let plugins: Vec<ExternalPluginMetadata> = resp
             .json()
             .await
-            .context("Failed to parse plugin list response")?;
+            .with_context(|| tr!("market.parse_list_failed"))?;
         Ok(plugins)
     }
 
@@ -84,10 +85,7 @@ impl MarketClient {
         let target = match parsed {
             PluginTarget::Marketplace(id) => id,
             PluginTarget::DirectUrl(url) => {
-                bail!(
-                    "'{url}' is an external direct download URL, not a marketplace plugin page.\n\
-                     To install it directly, run: ppm install {url}"
-                );
+                bail!("{}", tr!("market.direct_url_not_page", url = url));
             }
         };
 
@@ -126,7 +124,10 @@ impl MarketClient {
             } else if author_matches.len() > 1 {
                 return resolve_candidates(trimmed, &author_matches);
             } else {
-                bail!("Plugin '{name}' by author '{author}' not found on the Pumpkin Marketplace.");
+                bail!(
+                    "{}",
+                    tr!("market.not_found_by_author", name = name, author = author)
+                );
             }
         }
 
@@ -161,7 +162,7 @@ impl MarketClient {
 
         // No exact match found
         if search_results.is_empty() {
-            bail!("Plugin '{id_or_name}' not found on the Pumpkin Marketplace.");
+            bail!("{}", tr!("market.not_found", plugin = id_or_name));
         }
 
         if search_results.len() == 1 {
@@ -188,14 +189,19 @@ impl MarketClient {
             ])
             .send()
             .await
-            .context("Failed to check for updates")?;
+            .with_context(|| tr!("market.check_update_failed"))?;
 
         if !resp.status().is_success() {
-            bail!("Check update failed with status: {}", resp.status());
+            bail!(
+                "{}",
+                tr!("market.check_update_status", status = resp.status())
+            );
         }
 
-        let check: CheckUpdateResponse =
-            resp.json().await.context("Failed to parse update info")?;
+        let check: CheckUpdateResponse = resp
+            .json()
+            .await
+            .with_context(|| tr!("market.parse_update_failed"))?;
         Ok(check)
     }
 
@@ -233,7 +239,7 @@ impl MarketClient {
         let resp = req
             .send()
             .await
-            .context("Failed to initiate plugin download")?;
+            .with_context(|| tr!("market.initiate_download_failed"))?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -254,23 +260,20 @@ impl MarketClient {
                 Ok((resp, filename, display_name, meta_opt))
             }
             StatusCode::UNAUTHORIZED => {
-                bail!(
-                    "Unauthorized (401): This is a paid or private plugin.\n\
-                     Please provide an access token with '--token <TOKEN>' or set PPM_TOKEN."
-                );
+                bail!("{}", tr!("market.unauthorized"));
             }
             StatusCode::FORBIDDEN => {
-                bail!(
-                    "Forbidden (403): You do not have permission or an active license\n\
-                     to download this plugin from the Pumpkin Marketplace."
-                );
+                bail!("{}", tr!("market.forbidden"));
             }
             StatusCode::NOT_FOUND => {
-                bail!("Plugin '{id_or_name}' was not found on the Pumpkin Marketplace (404).");
+                bail!("{}", tr!("market.not_found_404", plugin = id_or_name));
             }
             status => {
                 let text = resp.text().await.unwrap_or_default();
-                bail!("Failed to download plugin ({status}): {text}");
+                bail!(
+                    "{}",
+                    tr!("market.download_failed", status = status, text = text)
+                );
             }
         }
     }
@@ -294,12 +297,20 @@ impl MarketClient {
         let resp = req
             .send()
             .await
-            .with_context(|| format!("Failed to initiate download from '{url}'"))?;
+            .with_context(|| tr!("market.initiate_direct_failed", url = url))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            bail!("Failed to download plugin from '{url}' ({status}): {text}");
+            bail!(
+                "{}",
+                tr!(
+                    "market.download_direct_failed",
+                    url = url,
+                    status = status,
+                    text = text
+                )
+            );
         }
 
         let filename = extract_filename(&resp).unwrap_or_else(|| {
@@ -328,16 +339,25 @@ struct CandidateChoice(ExternalPluginMetadata);
 impl std::fmt::Display for CandidateChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let p = &self.0;
-        let ver = p.version.as_deref().unwrap_or("latest");
+        let default_ver = tr!("common.latest");
+        let ver = p.version.as_deref().unwrap_or(default_ver.as_str());
         let price_tag = match p.type_.as_str() {
             "paid" => format!(" (${:.2})", p.price),
-            "adwall" => " (ad-supported)".to_string(),
+            "adwall" => tr!("market.candidate_ad_supported"),
             _ => String::new(),
         };
         write!(
             f,
-            "{} by {} [v{}, {} dl, ID: {}{}]",
-            p.name, p.dev_name, ver, p.downloads, p.public_id, price_tag
+            "{}",
+            tr!(
+                "market.candidate_entry",
+                name = p.name,
+                author = p.dev_name,
+                version = ver,
+                downloads = p.downloads,
+                id = p.public_id,
+                price = price_tag
+            )
         )
     }
 }
@@ -349,20 +369,12 @@ fn resolve_candidates(
     if std::io::stdin().is_terminal() {
         prompt_candidate_selection(query, candidates)
     } else {
-        let mut msg = format!("Multiple plugins matched '{query}':\n");
+        let mut msg = format!("{}\n", tr!("market.multiple_matches_header", query = query));
         for p in candidates {
-            let ver = p.version.as_deref().unwrap_or("latest");
-            let price = if p.type_ == "paid" {
-                format!(" (${:.2})", p.price)
-            } else {
-                String::new()
-            };
-            msg.push_str(&format!(
-                "  • {} by {} [v{}, {} dl, ID: {}{}]\n",
-                p.name, p.dev_name, ver, p.downloads, p.public_id, price
-            ));
+            let entry = CandidateChoice(p.clone());
+            msg.push_str(&format!("  • {entry}\n"));
         }
-        msg.push_str("Please specify the exact Public ID, Database ID, or full URL to proceed.");
+        msg.push_str(&tr!("market.multiple_matches_footer"));
         bail!(msg);
     }
 }
@@ -373,10 +385,7 @@ fn prompt_candidate_selection(
 ) -> Result<ExternalPluginMetadata> {
     let options: Vec<CandidateChoice> = candidates.iter().cloned().map(CandidateChoice).collect();
 
-    let prompt_msg = format!(
-        "Multiple plugins found matching '{}'. Please select one:",
-        query
-    );
+    let prompt_msg = tr!("market.select_prompt", query = query);
 
     let selected = inquire::Select::new(&prompt_msg, options)
         .with_page_size(10)
@@ -387,30 +396,65 @@ fn prompt_candidate_selection(
         Err(
             inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted,
         ) => {
-            bail!("Plugin selection cancelled by user.");
+            bail!("{}", tr!("market.selection_cancelled"));
         }
-        Err(e) => bail!("Failed to select plugin: {e}"),
+        Err(e) => bail!("{}", tr!("market.selection_failed", error = e)),
     }
 }
 
-/// Helper to parse filename from Content-Disposition header.
+/// Extracts and sanitizes a plain filename from a `Content-Disposition` header,
+/// stripping any directory components so servers cannot trigger path traversal.
 fn extract_filename(resp: &reqwest::Response) -> Option<String> {
     let header_val = resp
         .headers()
         .get(header::CONTENT_DISPOSITION)?
         .to_str()
         .ok()?;
+    parse_content_disposition_filename(header_val)
+}
 
+fn parse_content_disposition_filename(header_val: &str) -> Option<String> {
     // Example header: attachment; filename="EpicRTP.wasm"; filename*=UTF-8''EpicRTP.wasm
     for part in header_val.split(';') {
         let part = part.trim();
         if let Some(stripped) = part.strip_prefix("filename=") {
             let clean = stripped.trim_matches('"').trim();
-            if !clean.is_empty() {
-                return Some(clean.to_string());
+            // Reject or strip any path separators (`/` or `\`) and traversal segments.
+            let leaf = clean
+                .rsplit(['/', '\\'])
+                .next()
+                .map(str::trim)
+                .unwrap_or_default();
+            if !leaf.is_empty() && leaf != "." && leaf != ".." {
+                return Some(leaf.to_string());
             }
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_content_disposition_filename_sanitizes_traversal() {
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="EpicRTP.wasm""#),
+            Some("EpicRTP.wasm".into())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="../../evil.wasm""#),
+            Some("evil.wasm".into())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="..\\evil.wasm""#),
+            Some("evil.wasm".into())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="..""#),
+            None
+        );
+    }
 }

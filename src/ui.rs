@@ -11,6 +11,7 @@ use comfy_table::{Cell, CellAlignment, Color, ContentArrangement, Table};
 
 use crate::installer::InstalledPlugin;
 use crate::market::ExternalPluginMetadata;
+use crate::tr;
 
 /// Prints the stylized Pumpkin Package Manager banner.
 pub fn print_logo() {
@@ -31,7 +32,7 @@ pub fn print_logo() {
 /// Print a table of plugins from the marketplace.
 pub fn print_plugins_table(plugins: &[ExternalPluginMetadata]) {
     if plugins.is_empty() {
-        println!("{}", "No plugins found matching criteria.".yellow());
+        println!("{}", tr!("ui.no_plugins_found").yellow());
         return;
     }
 
@@ -40,14 +41,16 @@ pub fn print_plugins_table(plugins: &[ExternalPluginMetadata]) {
         .load_style(presets::UTF8_FULL.with_rounded_corners())
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("ID").fg(Color::DarkGrey),
-            Cell::new("Name").fg(Color::Yellow),
-            Cell::new("Version").fg(Color::Cyan),
-            Cell::new("Category").fg(Color::Magenta),
-            Cell::new("Author").fg(Color::White),
-            Cell::new("Type").fg(Color::Green),
-            Cell::new("Downloads").fg(Color::Blue),
+            Cell::new(tr!("ui.table.id")).fg(Color::DarkGrey),
+            Cell::new(tr!("ui.table.name")).fg(Color::Yellow),
+            Cell::new(tr!("ui.table.version")).fg(Color::Cyan),
+            Cell::new(tr!("ui.table.category")).fg(Color::Magenta),
+            Cell::new(tr!("ui.table.author")).fg(Color::White),
+            Cell::new(tr!("ui.table.type")).fg(Color::Green),
+            Cell::new(tr!("ui.table.downloads")).fg(Color::Blue),
         ]);
+
+    let other_category = tr!("ui.category.other");
 
     for p in plugins {
         let version_str = match &p.version {
@@ -57,13 +60,13 @@ pub fn print_plugins_table(plugins: &[ExternalPluginMetadata]) {
 
         let category_str = match &p.category {
             Some(c) if !c.trim().is_empty() => c.as_str(),
-            _ => "Other",
+            _ => other_category.as_str(),
         };
 
         let type_cell = match p.type_.as_str() {
-            "free" => Cell::new("Free").fg(Color::Green),
+            "free" => Cell::new(tr!("ui.type.free")).fg(Color::Green),
             "paid" => Cell::new(format!("${:.2}", p.price)).fg(Color::Yellow),
-            "adwall" => Cell::new("Ad-supported").fg(Color::Cyan),
+            "adwall" => Cell::new(tr!("ui.type.ad_supported")).fg(Color::Cyan),
             other => Cell::new(other),
         };
 
@@ -82,59 +85,126 @@ pub fn print_plugins_table(plugins: &[ExternalPluginMetadata]) {
 
     println!("{table}");
     println!(
-        "Total results: {} | Run '{}' for details",
-        plugins.len().to_string().bold(),
-        "ppm info <NAME>".cyan()
+        "{}",
+        tr!(
+            "ui.total_results",
+            count = plugins.len().to_string().bold(),
+            cmd = "ppm info <NAME>".cyan()
+        )
     );
+}
+
+/// Pads a label to a target display column width (accounting for wide CJK characters).
+fn pad_label(label: &str, target_width: usize) -> String {
+    let width: usize = label
+        .chars()
+        .map(|c| if is_wide_char(c) { 2 } else { 1 })
+        .sum();
+    if width >= target_width {
+        label.to_string()
+    } else {
+        format!("{label}{}", " ".repeat(target_width - width))
+    }
+}
+
+fn is_wide_char(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x1100..=0x115F
+            | 0x2E80..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE10..=0xFE19
+            | 0xFE30..=0xFE6F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x20000..=0x2FFFD
+            | 0x30000..=0x3FFFD
+    )
 }
 
 /// Print comprehensive details of a single plugin.
 pub fn print_plugin_details(p: &ExternalPluginMetadata) {
+    let default_ver = tr!("ui.version.latest_unspecified");
     let version_str = match &p.version {
         Some(v) if !v.trim().is_empty() => v.as_str(),
-        _ => "Latest / Unspecified",
+        _ => default_ver.as_str(),
     };
 
+    let default_cat = tr!("ui.category.other");
     let category_str = match &p.category {
         Some(c) if !c.trim().is_empty() => c.as_str(),
-        _ => "Other",
+        _ => default_cat.as_str(),
     };
 
     let type_str = match p.type_.as_str() {
-        "free" => "Free".green().bold(),
-        "paid" => format!("Paid (${:.2})", p.price).yellow().bold(),
-        "adwall" => "Ad-Supported".cyan().bold(),
+        "free" => tr!("ui.type.free").green().bold(),
+        "paid" => tr!("ui.type.paid", price = format!("{:.2}", p.price))
+            .yellow()
+            .bold(),
+        "adwall" => tr!("ui.type.ad_supported").cyan().bold(),
         other => other.white().bold(),
     };
 
     println!();
     println!("  {}", format!("📦 {}", p.name).bright_yellow().bold());
     println!("  {}", "─".repeat(50).dimmed());
-    println!("  {:<16} {}", "Version:".bold(), version_str.cyan());
-    println!("  {:<16} {}", "Author:".bold(), p.dev_name.white());
-    println!("  {:<16} {}", "Category:".bold(), category_str.magenta());
-    println!("  {:<16} {}", "Type:".bold(), type_str);
     println!(
-        "  {:<16} {}",
-        "Downloads:".bold(),
+        "  {} {}",
+        pad_label(&tr!("ui.detail.version"), 16).bold(),
+        version_str.cyan()
+    );
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.author"), 16).bold(),
+        p.dev_name.white()
+    );
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.category"), 16).bold(),
+        category_str.magenta()
+    );
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.type"), 16).bold(),
+        type_str
+    );
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.downloads"), 16).bold(),
         p.downloads.to_string().blue()
     );
-    println!("  {:<16} {}", "Public ID:".bold(), p.public_id.dimmed());
     println!(
-        "  {:<16} {}",
-        "Database ID:".bold(),
+        "  {} {}",
+        pad_label(&tr!("ui.detail.public_id"), 16).bold(),
+        p.public_id.dimmed()
+    );
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.database_id"), 16).bold(),
         p.id.to_string().dimmed()
     );
-    println!("  {:<16} {}", "Last Updated:".bold(), p.updated_at.dimmed());
+    println!(
+        "  {} {}",
+        pad_label(&tr!("ui.detail.last_updated"), 16).bold(),
+        p.updated_at.dimmed()
+    );
 
     if let Some(preview) = &p.preview_url {
-        println!("  {:<16} {}", "Preview:".bold(), preview.underline().blue());
+        println!(
+            "  {} {}",
+            pad_label(&tr!("ui.detail.preview"), 16).bold(),
+            preview.underline().blue()
+        );
     }
 
     println!("  {}", "─".repeat(50).dimmed());
     println!(
-        "  Install command: {}",
-        format!("ppm install {}", p.name).bright_cyan().bold()
+        "  {}",
+        tr!(
+            "ui.detail.install_command",
+            cmd = format!("ppm install {}", p.name).bright_cyan().bold()
+        )
     );
     println!();
 }
@@ -142,11 +212,14 @@ pub fn print_plugin_details(p: &ExternalPluginMetadata) {
 /// Print local installed plugins.
 pub fn print_installed_table(plugins: &[InstalledPlugin]) {
     if plugins.is_empty() {
-        println!("{}", "No plugins installed in this directory.".yellow());
+        println!("{}", tr!("ui.installed.empty").yellow());
         println!(
-            "Tip: Search plugins with '{}' or install with '{}'",
-            "ppm search <QUERY>".cyan(),
-            "ppm install <PLUGIN>".cyan()
+            "{}",
+            tr!(
+                "ui.installed.tip",
+                search_cmd = "ppm search <QUERY>".cyan(),
+                install_cmd = "ppm install <PLUGIN>".cyan()
+            )
         );
         return;
     }
@@ -156,24 +229,24 @@ pub fn print_installed_table(plugins: &[InstalledPlugin]) {
         .load_style(presets::UTF8_FULL.with_rounded_corners())
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("Plugin File").fg(Color::Yellow),
-            Cell::new("Status").fg(Color::Green),
-            Cell::new("Version").fg(Color::Cyan),
-            Cell::new("Author").fg(Color::White),
-            Cell::new("Market ID").fg(Color::DarkGrey),
-            Cell::new("Size").fg(Color::Blue),
-            Cell::new("Modified").fg(Color::Cyan),
+            Cell::new(tr!("ui.installed.table.file")).fg(Color::Yellow),
+            Cell::new(tr!("ui.installed.table.status")).fg(Color::Green),
+            Cell::new(tr!("ui.installed.table.version")).fg(Color::Cyan),
+            Cell::new(tr!("ui.installed.table.author")).fg(Color::White),
+            Cell::new(tr!("ui.installed.table.market_id")).fg(Color::DarkGrey),
+            Cell::new(tr!("ui.installed.table.size")).fg(Color::Blue),
+            Cell::new(tr!("ui.installed.table.modified")).fg(Color::Cyan),
         ]);
 
     for p in plugins {
         let status = if p.is_active {
             if p.is_managed {
-                Cell::new("Active").fg(Color::Green)
+                Cell::new(tr!("ui.status.active")).fg(Color::Green)
             } else {
-                Cell::new("Active (unmanaged)").fg(Color::DarkGreen)
+                Cell::new(tr!("ui.status.active_unmanaged")).fg(Color::DarkGreen)
             }
         } else {
-            Cell::new("Deactivated").fg(Color::DarkGrey)
+            Cell::new(tr!("ui.status.deactivated")).fg(Color::DarkGrey)
         };
 
         let ver = p.version.as_deref().unwrap_or("-");
@@ -194,7 +267,13 @@ pub fn print_installed_table(plugins: &[InstalledPlugin]) {
     }
 
     println!("{table}");
-    println!("Total installed: {}", plugins.len().to_string().bold());
+    println!(
+        "{}",
+        tr!(
+            "ui.installed.total",
+            count = plugins.len().to_string().bold()
+        )
+    );
 }
 
 pub fn success(msg: impl std::fmt::Display) {

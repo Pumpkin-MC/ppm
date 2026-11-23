@@ -5,12 +5,11 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     let struct_name = ctx.struct_name();
@@ -23,7 +22,7 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
   </packageSources>
 </configuration>
 "#;
-    fs::write(dir.join("NuGet.Config"), nuget_config).context("Failed to write NuGet.Config")?;
+    write_file(&dir.join("NuGet.Config"), "NuGet.Config", nuget_config)?;
 
     // .csproj
     let csproj = r#"<Project Sdk="Microsoft.NET.Sdk">
@@ -41,15 +40,14 @@ pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
 </Project>
 "#;
     let csproj_name = format!("{struct_name}.csproj");
-    fs::write(dir.join(&csproj_name), csproj)
-        .with_context(|| format!("Failed to write {csproj_name}"))?;
+    write_file(&dir.join(&csproj_name), &csproj_name, csproj)?;
 
     // .gitignore
     let gitignore = r#"bin/
 obj/
 *.wasm
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // Plugin.cs
     let plugin_cs = format!(
@@ -99,7 +97,7 @@ public class {struct_name}Plugin : IPluginWorldExports, IMetadataExports
         desc = ctx.description,
         author = ctx.author
     );
-    fs::write(dir.join("Plugin.cs"), plugin_cs).context("Failed to write Plugin.cs")?;
+    write_file(&dir.join("Plugin.cs"), "Plugin.cs", plugin_cs)?;
 
     // README.md
     let readme = format!(
@@ -120,7 +118,7 @@ Copy the compiled `.wasm` file from `bin/Release/net10.0/wasi-wasm/` into your P
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

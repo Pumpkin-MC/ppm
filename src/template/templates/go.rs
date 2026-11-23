@@ -5,12 +5,11 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::TemplateContext;
+use super::{TemplateContext, write_file};
 
 pub fn generate(dir: &Path, ctx: &TemplateContext) -> Result<()> {
     // go.mod
@@ -25,14 +24,14 @@ require (
 "#,
         name = ctx.name
     );
-    fs::write(dir.join("go.mod"), go_mod).context("Failed to write go.mod")?;
+    write_file(&dir.join("go.mod"), "go.mod", go_mod)?;
 
     // .gitignore
     let gitignore = r#"*.wasm
 /bin
 /build
 "#;
-    fs::write(dir.join(".gitignore"), gitignore).context("Failed to write .gitignore")?;
+    write_file(&dir.join(".gitignore"), ".gitignore", gitignore)?;
 
     // main.go
     let struct_name = format!("{}Plugin", ctx.struct_name());
@@ -73,7 +72,7 @@ func main() {{}}
         author = ctx.author,
         desc = ctx.description
     );
-    fs::write(dir.join("main.go"), main_go).context("Failed to write main.go")?;
+    write_file(&dir.join("main.go"), "main.go", main_go)?;
 
     // README.md
     let readme = format!(
@@ -91,7 +90,7 @@ Build the plugin to WASM and copy the `.wasm` file to your Pumpkin server's `plu
         name = ctx.name,
         desc = ctx.description
     );
-    fs::write(dir.join("README.md"), readme).context("Failed to write README.md")?;
+    write_file(&dir.join("README.md"), "README.md", readme)?;
 
     Ok(())
 }

@@ -210,6 +210,13 @@ Completions are automatically placed into:
 | `PUMPKIN_MARKET_URL` | `--market-url <URL>` | `https://market.pumpkinmc.org` | Pumpkin Marketplace API base URL |
 | `PUMPKIN_PLUGINS_DIR` | `--plugins-dir <DIR>` | Auto-detected | Directory where plugins are installed (auto-resolves server root vs plugins dir) |
 | `PPM_TOKEN` | `--token <TOKEN>` | `None` | Authentication token for private/paid plugins |
+| `PPM_LOCALE` / `PPM_LANG` | `--locale <LOCALE>` | Auto-detected | Display language override (e.g. `en_US`, `zh_CN`, `zh_TW`); auto-detected from OS/environment locale with `en_US` fallback |
+
+### Internationalization (i18n)
+
+`ppm` automatically detects your native OS locale (applicable to Windows, macOS, and Linux/BSD), and falls back to `en_US` if no matching translation catalog is found.
+
+Supported languages are discovered automatically from `locales/*.json` at build time—adding a new translation file (for example `locales/ja_JP.json`) and rebuilding automatically enables it without modifying any Rust code. Catalogs are validated while building (malformed JSON, missing keys, or inconsistent `{placeholders}` fail the build) and embedded as static tables, so the lookup path performs no parsing or allocation.
 
 ---
 
